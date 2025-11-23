@@ -1,0 +1,31 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.venv/
+venv/
+
+# IDE/editor
+.trae/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Project outputs and large artifacts
+output/**
+results*/**
+train_results/**
+checkpoints_*/**
+performance_reports/**
+
+# Model and dataset files
+*.pth
+*.npz
+*.pid
+*.csv
+*.log
+
