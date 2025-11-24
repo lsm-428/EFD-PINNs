@@ -61,9 +61,8 @@
 
 **目录结构**
 - 根目录关键脚本与文档
-  - `ewp_pinn_optimized_train.py`：主训练/测试/推理入口
-  - `run_enhanced_training.py`：增强训练管线（长流程、监控、可视化）
-  - `long_term_training.py`：长期训练方案（动态物理权重）
+  - `efd_pinns_train.py`：统一训练/测试/推理入口（整合短训、增强管线、长期训练、动态权重、3D映射、ONNX导出）
+  - （旧脚本已迁移至 `scripts/legacy_backup/`：ewp_pinn_optimized_train.py / run_enhanced_training.py / long_term_training.py）
   - `evaluate_model.py`、`monitor_training.py`、`monitor_training_progress.py`
   - 文档：`README.md`、`README_tests.md`、`quick_start_guide.md`、`ewp_documentation.md`、`PHYSICS_CONSTRAINTS_IMPLEMENTATION.md`
 - 目录与重要文件
@@ -80,24 +79,25 @@
   - `pip install torch numpy matplotlib scikit-learn pytest`
   - 可选：`pip install onnx onnxruntime pyvista pandas`
 
-**快速开始**
-- 基础训练（保存最终模型到指定目录）
-  - `python ewp_pinn_optimized_train.py --mode train --config config/model_config.json --output-dir results_enhanced`
-- 使用高效架构与模型压缩
-  - `python ewp_pinn_optimized_train.py --mode train --efficient-architecture --model-compression 0.8 --output-dir results_enhanced`
+**快速开始（唯一入口）**
+- 短训练
+  - `python efd_pinns_train.py --mode train --config config/exp_short_config.json --output-dir results_short`
+- 长训练 / 动态权重
+  - `python efd_pinns_train.py --mode train --config config/long_run_config.json --output-dir results_long_run --epochs 100000 --dynamic_weight --weight_strategy adaptive`
+- 高效架构与模型压缩
+  - `python efd_pinns_train.py --mode train --config config/exp_short_config.json --efficient-architecture --model-compression 0.8 --output-dir results_short`
 - 从检查点恢复训练
-  - `python ewp_pinn_optimized_train.py --mode train --resume --checkpoint results_enhanced/checkpoints/best_model.pth --output-dir results_enhanced`
+  - `python efd_pinns_train.py --mode train --config config/exp_short_config.json --resume --output-dir results_resume`
 - 测试与推理
-  - `python ewp_pinn_optimized_train.py --mode test --model-path results_enhanced/checkpoints/best_model.pth`
-  - `python ewp_pinn_optimized_train.py --mode infer --model-path results_enhanced/checkpoints/best_model.pth`
+  - `python efd_pinns_train.py --mode test --model-path results_short/final_model.pth --config config/exp_short_config.json`
+  - `python efd_pinns_train.py --mode infer --model-path results_short/final_model.pth`
 
-**增强训练与长期训练**
-- 增强训练（含数据生成、监控与可视化）
-  - `python run_enhanced_training.py --config ./enhanced_training_config.py --output_dir ./results_enhanced`
-  - 快速模式：`python run_enhanced_training.py --quick_run --output_dir ./results_enhanced`
-  - 仅数据生成：`python run_enhanced_training.py --generate_data_only --output_dir ./results_enhanced`
-- 长期训练（大轮次与动态物理权重）
-  - `python long_term_training.py --output_dir ./results_long_run --epochs 100000 --dynamic_weight --weight_strategy adaptive`
+**统一输出结构**
+- 训练产物统一写入带时间戳的 `output_dir_YYYYMMDD_HHMMSS/`：
+  - 顶层：`final_model.pth`、`dataset.npz`
+  - `reports/training_history.json`、`reports/validation_results.json`、`reports/constraint_diagnostics_*.json`
+  - `visualizations/training_curves.png`、`visualizations/constraint_*.png`
+  - `checkpoints/`：阶段与最佳检查点（best.pth / latest.pth / checkpoint_epoch_*.pth）
 
 **模型与接口**
 - 主模型类与预测输出

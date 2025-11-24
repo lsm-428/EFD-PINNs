@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-11-24 16:47:33",
+  "training_summary": {
+    "total_epochs": 41,
+    "best_train_loss": 0.08668366159711566,
+    "best_val_loss": 0.22517332434654236,
+    "final_train_loss": 0.11080572383744376,
+    "final_val_loss": 1.9813884496688843,
+    "training_stages": 0
+  },
+  "convergence_analysis": {
+    "status": "converging",
+    "best_epoch": 8,
+    "best_loss": 0.22517332434654236,
+    "final_loss": 1.9813884496688843,
+    "convergence_rate": 0.8319189684399512,
+    "overfitting": true,
+    "suggestion": "模型仍在收敛中，可以继续训练"
+  },
+  "diagnostic_results": {
+    "convergence_analysis": {
+      "status": "converging",
+      "best_epoch": 8,
+      "best_loss": 0.22517332434654236,
+      "final_loss": 1.9813884496688843,
+      "convergence_rate": 0.8319189684399512,
+      "overfitting": true,
+      "suggestion": "模型仍在收敛中，可以继续训练"
+    }
+  },
+  "recommendations": [
+    "模型仍在收敛中，可以继续训练"
+  ]
+}

@@ -8,18 +8,18 @@
     "activation": "ReLU"
   },
   "training": {
-    "epochs": 2,
-    "batch_size": 16,
+    "epochs": 100,
+    "batch_size": 64,
     "learning_rate": 0.001,
     "weight_decay": 1e-5,
     "validation_split": 0.2,
-    "early_stopping_patience": 3,
+    "early_stopping_patience": 10,
     "gradient_clipping": 1.0,
     "mixed_precision": false,
     "device": "cpu"
   },
   "data": {
-    "num_samples": 50,
+    "num_samples": 1000,
     "noise_level": 0.01
   },
   "physics": {
