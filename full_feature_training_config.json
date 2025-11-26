@@ -36,6 +36,9 @@
     "enabled": true,
     "physics_weight": 1.0,
     "adaptive_physics_weight": true,
+    "residual_weights": {
+      "young_lippmann": 1.0
+    },
     "physics_weight_scheduler": {
       "type": "cosine",
       "initial": 0.5,
@@ -82,19 +85,19 @@
     "1": {
       "epochs": 50,
       "learning_rate": 1e-3,
-      "description": "预训练阶段",
+      "description": "Pretraining Stage",
       "physics_weight": 0.5
     },
     "2": {
       "epochs": 75,
       "learning_rate": 5e-4,
-      "description": "物理强化阶段",
+      "description": "Physics Enhancement Stage",
       "physics_weight": 1.0
     },
     "3": {
       "epochs": 75,
       "learning_rate": 1e-4,
-      "description": "精细调优阶段",
+      "description": "Fine-tuning Stage",
       "physics_weight": 1.5
     }
   },

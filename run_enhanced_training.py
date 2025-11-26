@@ -61,7 +61,7 @@ from ewp_data_interface import validate_units
 from scripts.generate_constraint_report import compute_constraint_stats
 from scripts.visualize_constraint_report import plot_residual_stats, plot_weight_series
 from ewp_data_interface import validate_units
-from ewp_pinn_optimized_train import progressive_training as unified_progressive_training, save_model
+from scripts.legacy_backup.ewp_pinn_optimized_train import progressive_training as unified_progressive_training, save_model
 
 # 移除已删除文件的导入
 # 这些功能将在需要时实现或使用替代方案

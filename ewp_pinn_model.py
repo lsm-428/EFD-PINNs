@@ -518,8 +518,16 @@ class EWPINN(nn.Module):
         self.output_layer = nn.Linear(width_low, output_dim)
         self.auxiliary_output_layer = nn.Linear(width_low, 16)
         
-        # 物理约束
-        self.physics_constraints = PhysicsConstraints()
+        # 新增双相流相关输出层
+        self.volume_fraction_layer = nn.Linear(width_low, 1)  # 体积分数α (0=油墨, 1=极性液体)
+        self.interface_curvature_layer = nn.Linear(width_low, 1)  # 界面曲率
+        self.ink_potential_layer = nn.Linear(width_low, 1)  # 油墨势能
+        
+        # 导入PINNConstraintLayer
+        from ewp_pinn_physics import PINNConstraintLayer
+        
+        # 物理约束层，使用PINNConstraintLayer替代PhysicsConstraints
+        self.physics_constraints = PINNConstraintLayer(config=self.config)
         
         # 初始化权重
         self._init_weights()
@@ -690,9 +698,17 @@ class EWPINN(nn.Module):
             except Exception as e:
                 logger.debug(f"输出一致性检查失败: {str(e)}")
 
+            # 计算新增输出
+            volume_fraction = torch.sigmoid(self.volume_fraction_layer(fusion_out))  # 确保α∈[0,1]
+            interface_curvature = self.interface_curvature_layer(fusion_out)
+            ink_potential = self.ink_potential_layer(fusion_out)
+            
             return {
                 'main_predictions': main_output,
                 'auxiliary_predictions': auxiliary_output,
+                'volume_fraction': volume_fraction,
+                'interface_curvature': interface_curvature,
+                'ink_potential': ink_potential,
                 'features': fusion_out
             }
         except Exception as e:
@@ -704,6 +720,9 @@ class EWPINN(nn.Module):
             return {
                 'main_predictions': torch.zeros(batch_size, self.output_layer.out_features, device=self.device),
                 'auxiliary_predictions': torch.zeros(batch_size, self.auxiliary_output_layer.out_features, device=self.device),
+                'volume_fraction': torch.zeros(batch_size, 1, device=self.device),
+                'interface_curvature': torch.zeros(batch_size, 1, device=self.device),
+                'ink_potential': torch.zeros(batch_size, 1, device=self.device),
                 'features': torch.zeros(batch_size, 128, device=self.device)
             }
     

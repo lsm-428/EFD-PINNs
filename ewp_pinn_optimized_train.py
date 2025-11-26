@@ -8,9 +8,10 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import matplotlib.pyplot as plt
-# 设置matplotlib使用英文
-plt.rcParams['font.sans-serif'] = ['Arial', 'DejaVu Sans', 'Bitstream Vera Sans', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False  # 确保负号正常显示
+
+# 设置matplotlib使用英文字体和正常负号
+plt.rcParams['font.sans-serif'] = ['Arial', 'Liberation Sans', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
 import time
 import os
 import json
@@ -1297,16 +1298,10 @@ def progressive_training(config_path='model_config.json', resume_training=False,
             # 使用统一的DataLoader进行批处理
             num_train_batches = len(train_loader)
             optimizer.zero_grad()
-            if epoch == 0:
-                print(f"[DEBUG EPOCH 0] physics_enabled={physics_enabled} | X_phys is None={X_phys is None}", flush=True)
             for batch_idx, (batch_features, batch_labels) in enumerate(train_loader):
-                if batch_idx < 3 and epoch == 0:
-                    print(f"[DEBUG LOOP] epoch={epoch} batch_idx={batch_idx} physics_enabled={physics_enabled} X_phys={X_phys is None}", flush=True)
                 batch_features = batch_features.to(device)
                 batch_labels = batch_labels.to(device)
                 stage_physics_weight = stage_config.get('物理约束权重', config['物理约束'].get('初始权重', 0.1))
-                if batch_idx == 0 and epoch == 0:
-                    print(f"[DEBUG] 阶段物理权重 = {stage_physics_weight} | physics_enabled={physics_enabled} | X_phys is None={X_phys is None}", flush=True)
                 if physics_enabled and X_phys is not None:
                     phys_indices = torch.randperm(len(X_phys))[:batch_features.size(0)]
                     X_phys_batch = X_phys[phys_indices].to(device)
@@ -1315,8 +1310,6 @@ def progressive_training(config_path='model_config.json', resume_training=False,
                     if physics_enabled and X_phys is not None:
                         data_loss = loss_stabilizer.compute_loss(predictions, batch_labels)
                         phys_outputs = model(X_phys_batch)
-                        if epoch == 0 and batch_idx == 0:
-                            print(f"[DEBUG MODEL] phys_outputs mean={phys_outputs.mean().item():.6f} std={phys_outputs.std().item():.6f}", flush=True)
                         physics_loss_val, _ = pinn_layer.compute_physics_loss(X_phys_batch, phys_outputs)
                         total_loss = data_loss + stage_physics_weight * physics_loss_val
                     else:
@@ -1861,7 +1854,6 @@ def progressive_training(config_path='model_config.json', resume_training=False,
     print(f"📁 所有结果保存在: {save_dir}")
     print(f"📊 最佳验证损失: {best_val_loss:.6f}")
     print(f"📈 物理约束集成: {'✅ 已启用' if physics_enabled else '❌ 未启用'}")
-    print(f"[DEBUG GLOBAL] physics_enabled={physics_enabled} | X_phys is None={X_phys is None}", flush=True)
     if model_init_seed is not None:
         print(f"🎲 模型初始化种子: {model_init_seed} (适用于集成学习)")
     if physics_enabled:
@@ -1957,18 +1949,18 @@ def plot_training_curves(train_losses, val_losses, save_dir):
     plt.subplot(1, 2, 1)
     plt.plot(train_losses, label='Train Loss', alpha=0.8)
     plt.plot(val_losses, label='Validation Loss', alpha=0.8)
-    plt.xlabel('Training Epochs')
+    plt.xlabel('Epochs')
     plt.ylabel('Loss Value')
     plt.title('Training Process - Loss Curves')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
     plt.subplot(1, 2, 2)
-    # Show latter 50% of data for clearer convergence view
+    # Show last 50% of data to better visualize convergence
     mid_point = len(train_losses) // 2
     plt.plot(range(mid_point, len(train_losses)), train_losses[mid_point:], label='Train Loss', alpha=0.8)
     plt.plot(range(mid_point, len(val_losses)), val_losses[mid_point:], label='Validation Loss', alpha=0.8)
-    plt.xlabel('Training Epochs')
+    plt.xlabel('Epochs')
     plt.ylabel('Loss Value')
     plt.title('Training Process - Late Convergence')
     plt.legend()

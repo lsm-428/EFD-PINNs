@@ -1,0 +1,29 @@
+{
+    "模型": {
+        "input_dim": 62,
+        "output_dim": 24,
+        "隐藏层维度": [64, 64],
+        "激活函数": "relu",
+        "dropout": 0.0,
+        "批量归一化": true,
+        "use_residual": true,
+        "use_attention": false
+    },
+    "loss": {
+        "loss_type": "mse",
+        "weight_strategy": "adaptive",
+        "base_physics_weight": 0.1,
+        "max_physics_weight": 10.0
+    },
+    "优化器": {
+        "type": "AdamW",
+        "weight_decay": 1e-4,
+        "betas": [0.9, 0.999]
+    },
+    "学习率调度": {
+        "type": "warmup_cosine",
+        "initial_lr": 1e-3,
+        "min_lr": 1e-6,
+        "warmup_epochs": 5
+    }
+}

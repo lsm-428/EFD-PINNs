@@ -1,0 +1,47 @@
+{
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_layers": [64, 32, 16],
+    "dropout_rate": 0.2,
+    "batch_norm": true,
+    "activation": "ReLU",
+    "use_residual": true
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "weight_decay": 1e-5,
+    "validation_split": 0.2,
+    "early_stopping_patience": 15,
+    "gradient_clipping": 1.0,
+    "mixed_precision": true,
+    "device": "auto",
+    "optimizer": "AdamW"
+  },
+  "learning_rate_scheduler": {
+    "type": "cosine",
+    "warmup_epochs": 10,
+    "min_lr": 1e-6
+  },
+  "data": {
+    "num_samples": 2000,
+    "num_val_samples": 200,
+    "num_test_samples": 100,
+    "noise_level": 0.01,
+    "augmentation": true,
+    "shuffle": true
+  },
+  "physics": {
+    "physics_weight": 1.0,
+    "boundary_weight": 1.0,
+    "initial_weight": 1.0,
+    "adaptive_physics_weight": true,
+    "num_physics_points": 2000
+  },
+  "output": {
+    "dir": "./outputs_unified"
+  },
+  "seed": 42
+}
