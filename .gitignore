@@ -16,11 +16,11 @@ venv/
 .DS_Store
 
 # Project outputs and large artifacts
-output/**
-results*/**
-train_results/**
-checkpoints_*/**
-performance_reports/**
+output/
+results*/
+train_results/
+checkpoints_*/
+performance_reports/
 
 # Model and dataset files
 *.pth
@@ -28,4 +28,31 @@ performance_reports/**
 *.pid
 *.csv
 *.log
+
+# Training and evaluation outputs
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.svg
+
+# Log files
+*.log
+logs/
+
+# Cache directories
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Configuration files with sensitive data
+*_config.json
+*_config.py
+
+# Backup files
+*.bak
+*.backup
 
