@@ -24,19 +24,19 @@ class PhysicsConstraints:
     """物理约束类 - 处理Navier-Stokes方程和材料属性"""
     
     def __init__(self, materials_params=None):
-        # 默认材料参数
+        # 默认材料参数 - 基于真实器件 (2025-11-29 修正)
         self.materials_params = materials_params or {
-            'viscosity': 1.0,
-            'density': 1.0,
-            'surface_tension': 0.0728,
+            'viscosity': 0.001,           # 水的粘度 (Pa·s)
+            'density': 1000.0,            # 水的密度 (kg/m³)
+            'surface_tension': 0.072,     # 油-水界面张力 (N/m) - 修正
             'permittivity': 80.1,
             'conductivity': 5.5e7,
             'youngs_modulus': 210e9,
             'poisson_ratio': 0.3,
             'contact_angle_theta0': 110.0,  # 静态接触角(度)
             'epsilon_0': 8.854e-12,  # 真空介电常数
-            'dielectric_thickness': 1e-6,  # 介电层厚度(m)
-            'relative_permittivity': 3.0,  # 相对介电常数
+            'dielectric_thickness': 0.4e-6,  # 介电层厚度(m) - 修正: SU-8 0.4μm
+            'relative_permittivity': 4.0,  # SU-8相对介电常数 - 修正: 原3.0错误
             # 接触线动力学参数
             'dynamic_contact_angle_advancing': 120.0, # 前进接触角 (度)
             'dynamic_contact_angle_receding': 100.0,  # 后退接触角 (度)
@@ -57,14 +57,14 @@ class PhysicsConstraints:
             'thermal_expansion_water': 2.1e-4, # 水的热膨胀系数 (1/K)
             'temperature_coefficient_surface_tension': -1.5e-4, # 表面张力温度系数 (N/(m·K))
             'temperature_coefficient_viscosity': -3.5e-3,       # 粘度温度系数 (1/K)
-            # 双相流相关参数
-            'density_polar': 1000.0,      # 极性液体密度 (kg/m³)
-            'density_ink': 800.0,          # 油墨密度 (kg/m³)
-            'viscosity_polar': 0.001,       # 极性液体粘度 (Pa·s)
-            'viscosity_ink': 0.01,          # 油墨粘度 (Pa·s)
-            'surface_tension_polar_ink': 0.03,  # 极性液体-油墨表面张力 (N/m)
+            # 双相流相关参数（修正为更真实的值 - 2024-11-27）
+            'density_polar': 1000.0,      # 极性液体密度 (kg/m³) - 水
+            'density_ink': 800.0,          # 油墨密度 (kg/m³) - 典型油墨
+            'viscosity_polar': 0.001,       # 极性液体粘度 (Pa·s) - 水
+            'viscosity_ink': 0.003,          # ⬇️ 油墨粘度 (Pa·s) - 修正为更真实值（原0.01太高）
+            'surface_tension_polar_ink': 0.045,  # ⬆️ 极性液体-油墨表面张力 (N/m) - 修正（原0.03太低）
             'contact_angle_ink': 120.0,     # 油墨接触角 (度)
-            'ink_potential_min': 0.0        # 油墨最小势能
+            'ink_potential_min': 0.0        # 油墨最小势能（待重新定义为界面能量）
         }
         
         # 预定义的边界条件权重
@@ -74,40 +74,65 @@ class PhysicsConstraints:
             'interface': 50.0
         }
         
-    def compute_navier_stokes_residual(self, x, predictions):
-        """计算Navier-Stokes方程残差"""
+        # 全局步数计数器，用于控制日志输出频率
+        self.global_step = 0
+        
+    def compute_navier_stokes_residual(self, x, predictions, model=None):
+        """
+        计算Navier-Stokes方程残差
+        
+        关键修复 (2025-11-29):
+        - 如果提供model参数，通过模型前向传播建立计算图连接
+        - 这确保了梯度可以正确从predictions流向x
+        
+        参数:
+            x: 物理点输入坐标
+            predictions: 模型预测输出 (如果model为None则使用此参数)
+            model: 可选的模型引用，用于建立计算图连接
+        """
         try:
             # 安全检查
-            if x is None or predictions is None:
-                logger.error("输入x或predictions为None")
+            if x is None:
+                logger.error("输入x为None")
                 return self._empty_residual(x, predictions)
             
-            # 确保x是可微分的
+            # 确保x是可微分的tensor
             if not isinstance(x, torch.Tensor):
-                logger.error(f"输入x类型错误，应为torch.Tensor，实际为{type(x)}")
-                x = torch.tensor(x, dtype=torch.float32).requires_grad_(True)
+                x = torch.tensor(x, dtype=torch.float32)
             
-            # 确保predictions是tensor并在正确设备上
-            if not isinstance(predictions, torch.Tensor):
-                logger.error(f"predictions类型错误，应为torch.Tensor，实际为{type(predictions)}")
-                predictions = torch.tensor(predictions, dtype=torch.float32)
-            
-            # 确保设备一致
             device = x.device
+            batch_size = x.shape[0]
+            
+            # 关键修复: 确保x启用梯度追踪
+            if not x.requires_grad:
+                x = x.clone().detach().requires_grad_(True)
+            
+            # 关键修复: 如果提供了model，通过前向传播建立计算图
+            if model is not None:
+                predictions = model(x)
+                # 处理字典输出
+                if isinstance(predictions, dict):
+                    if 'main_predictions' in predictions:
+                        predictions = predictions['main_predictions']
+                    else:
+                        for v in predictions.values():
+                            if isinstance(v, torch.Tensor) and v.dim() >= 2:
+                                predictions = v
+                                break
+            
+            # 确保predictions是tensor
+            if predictions is None or not isinstance(predictions, torch.Tensor):
+                logger.error("predictions无效")
+                return self._empty_residual(x, predictions)
+            
             predictions = predictions.to(device)
             
-            # 验证x需要梯度
-            if not x.requires_grad:
-                logger.warning("物理点x不需要梯度，克隆并设置requires_grad=True")
-                x = x.clone().requires_grad_(True)
-            
-            # 确保predictions需要梯度（关键修复）
+            # 检查predictions是否与x有计算图连接
             if not predictions.requires_grad:
-                logger.warning("predictions不需要梯度，克隆并设置requires_grad=True")
-                predictions = predictions.clone().requires_grad_(True)
+                logger.warning("predictions没有梯度，物理约束可能无效")
             
-            batch_size = x.shape[0]
-            logger.info(f"计算Navier-Stokes残差，批大小: {batch_size}")
+            if batch_size <= 3:
+                logger.info(f"计算Navier-Stokes残差，批大小: {batch_size}")
             
             # 安全提取速度和压力
             try:
@@ -119,144 +144,120 @@ class PhysicsConstraints:
                 logger.error(f"预测维度不足，预测形状: {predictions.shape}")
                 return self._empty_residual(x, predictions)
             
-            # 使用模型实际输入x进行梯度计算，采用全部输入维度作为坐标
+            # 使用模型实际输入x进行梯度计算
             coords = x
-            spatial_dims = coords.shape[-1]
+            spatial_dims = min(3, coords.shape[-1])  # 只使用前3维作为空间坐标
 
-            # 定义稳定的梯度计算函数
-            def safe_compute_gradient(output, input_tensor, grad_name=""):
+            # 修复后的梯度计算函数 (2025-11-29)
+            # 关键: 不要克隆张量，保持计算图连接
+            def compute_gradient_correct(output, input_tensor, grad_name=""):
+                """
+                正确的梯度计算方法
+                
+                关键点:
+                1. 不克隆张量，保持计算图连接
+                2. 使用create_graph=True保持二阶梯度能力
+                3. 正确处理梯度为None的情况
+                """
+                # 获取全局步数用于日志控制
+                global_step = getattr(self, 'global_step', 0)
+                
                 try:
-                    # 确保output和input_tensor是正确的类型
-                    if not isinstance(output, torch.Tensor):
-                        logger.error(f"{grad_name}输出不是torch.Tensor，类型: {type(output)}")
-                        return torch.zeros(batch_size, 3, device=device)
+                    # 检查计算图连接
+                    if not output.requires_grad:
+                        # 如果output没有梯度，说明计算图断开
+                        # 返回零梯度但记录警告
+                        if global_step <= 5:
+                            logger.warning(f"{grad_name}: output没有requires_grad，计算图可能断开")
+                        return torch.zeros(batch_size, spatial_dims, device=device)
                     
-                    if not isinstance(input_tensor, torch.Tensor):
-                        logger.error(f"{grad_name}输入不是torch.Tensor，类型: {type(input_tensor)}")
-                        return torch.zeros(batch_size, 3, device=device)
+                    if not input_tensor.requires_grad:
+                        if global_step <= 5:
+                            logger.warning(f"{grad_name}: input没有requires_grad")
+                        return torch.zeros(batch_size, spatial_dims, device=device)
                     
-                    # 创建新的requires_grad=True的张量用于梯度计算
-                    # 关键修复：克隆并启用梯度
-                    input_tensor_cloned = input_tensor.clone().requires_grad_(True)
-                    output_cloned = output.clone().requires_grad_(True)  # 确保output也启用梯度
+                    # 计算梯度 - 关键: 不使用allow_unused=True
+                    grad_outputs = torch.ones_like(output)
                     
-                    # 确保output和input_tensor形状兼容
-                    if output_cloned.shape[0] != input_tensor_cloned.shape[0]:
-                        logger.warning(f"{grad_name}输出和输入形状不匹配，output: {output_cloned.shape}, input: {input_tensor_cloned.shape}")
-                        output_cloned = output_cloned[:input_tensor_cloned.shape[0]]
-                    
-                    # 确保output在正确的设备上
-                    output_cloned = output_cloned.to(device)
-                    input_tensor_cloned = input_tensor_cloned.to(device)
-                    
-                    # 创建与output形状匹配的梯度输出
-                    grad_outputs = torch.ones_like(output_cloned, device=device)
-                    
-                    # 增强版计算图连接
-                    with torch.enable_grad():
-                        # 创建一个明确依赖于input_tensor_cloned的新输出
-                        # 这确保了计算图的正确连接
-                        if grad_name in ['u', 'v', 'w']:
-                            # 对于速度分量，使用线性组合确保梯度流
-                            coord_idx = 0 if grad_name == 'u' else 1 if grad_name == 'v' else 2
-                            if coord_idx < input_tensor_cloned.shape[-1]:
-                                # 使用当前批次的坐标值来增强连接
-                                connection_factor = 1.0  # 更强的连接权重
-                                enhanced_output = output_cloned + \
-                                                (connection_factor * input_tensor_cloned[:, coord_idx] * \
-                                                 torch.mean(torch.abs(output_cloned)) + 1e-12) * 1e-4
-                            else:
-                                enhanced_output = output_cloned
-                        else:
-                            # 对于压力，使用所有空间坐标
-                            spatial_coords = input_tensor_cloned[:, :3]
-                            connection_factor = 1.0
-                            enhanced_output = output_cloned + \
-                                            (connection_factor * spatial_coords.mean(dim=1) * \
-                                             torch.mean(torch.abs(output_cloned)) + 1e-12) * 1e-4
+                    try:
+                        grad = torch.autograd.grad(
+                            outputs=output,
+                            inputs=input_tensor,
+                            grad_outputs=grad_outputs,
+                            create_graph=True,
+                            retain_graph=True,
+                            allow_unused=False  # 关键: 不允许未使用的输入
+                        )[0]
+                    except RuntimeError as e:
+                        # 如果梯度计算失败，尝试使用allow_unused=True
+                        if "does not require grad" in str(e) or "is not part of the graph" in str(e):
+                            if global_step <= 5:
+                                logger.warning(f"{grad_name}: 计算图未连接 - {str(e)[:100]}")
+                            return torch.zeros(batch_size, spatial_dims, device=device)
                         
-                        # 确保enhanced_output需要梯度
-                        enhanced_output = enhanced_output.clone().requires_grad_(True)
-                        
-                        # 强制计算一个简单的操作来建立计算图
-                        _ = enhanced_output.sum().backward(retain_graph=True)
-                        
-                        # 尝试计算梯度
+                        # 尝试备用方法
                         try:
                             grad = torch.autograd.grad(
-                                enhanced_output, input_tensor_cloned, 
+                                outputs=output,
+                                inputs=input_tensor,
                                 grad_outputs=grad_outputs,
-                                create_graph=True, 
+                                create_graph=True,
                                 retain_graph=True,
-                                only_inputs=True,
                                 allow_unused=True
                             )[0]
-                            
-                            if grad is None:
-                                logger.warning(f"{grad_name}梯度计算返回None，创建非零残差")
-                                # 创建随机非零梯度作为回退
-                                grad = torch.randn(batch_size, input_tensor_cloned.shape[-1], device=device) * 0.1
-                        except RuntimeError as e:
-                            logger.warning(f"{grad_name}梯度计算RuntimeError: {str(e)}，使用回退方法")
-                            # 降级处理：创建一个简单的线性模型来模拟梯度
-                            with torch.no_grad():
-                                # 直接使用output和input之间的相关性来模拟梯度
-                                if output_cloned.std() > 1e-12:
-                                    # 计算一个简单的相关性梯度
-                                    normalized_output = (output_cloned - output_cloned.mean()) / output_cloned.std()
-                                    grad = torch.zeros(batch_size, input_tensor_cloned.shape[-1], device=device)
-                                    # 填充第一个维度的梯度
-                                    grad[:, 0] = normalized_output
-                                    # 填充其他维度的随机梯度
-                                    for i in range(1, min(3, input_tensor_cloned.shape[-1])):
-                                        grad[:, i] = torch.randn(batch_size, device=device) * 0.01
-                                else:
-                                    # 如果output太接近零，创建完全随机的梯度
-                                    grad = torch.randn(batch_size, input_tensor_cloned.shape[-1], device=device) * 0.1
+                        except Exception:
+                            return torch.zeros(batch_size, spatial_dims, device=device)
                     
-                    # 确保梯度形状正确
-                    target_shape = (batch_size, 3) if grad.shape[-1] > 3 else grad.shape
-                    if grad.shape != target_shape:
-                        grad = grad[:, :target_shape[-1]]
-                        if grad.shape[-1] < 3:
-                            # 填充缺失的维度
-                            padding = torch.zeros(batch_size, 3 - grad.shape[-1], device=device)
-                            grad = torch.cat([grad, padding], dim=-1)
+                    if grad is None:
+                        if global_step <= 5:
+                            logger.warning(f"{grad_name}: 梯度为None")
+                        return torch.zeros(batch_size, spatial_dims, device=device)
+                    
+                    # 只取前spatial_dims维
+                    if grad.shape[-1] > spatial_dims:
+                        grad = grad[:, :spatial_dims]
+                    elif grad.shape[-1] < spatial_dims:
+                        # 填充
+                        padding = torch.zeros(batch_size, spatial_dims - grad.shape[-1], device=device)
+                        grad = torch.cat([grad, padding], dim=-1)
                     
                     return grad
                     
                 except Exception as e:
-                    logger.error(f"{grad_name}梯度计算完全失败: {str(e)}")
-                    # 创建明确的非零残差，确保训练有梯度信号
-                    return torch.randn(batch_size, 3, device=device) * 0.1
+                    if global_step <= 5:
+                        logger.error(f"{grad_name}梯度计算异常: {str(e)}")
+                    return torch.zeros(batch_size, spatial_dims, device=device)
             
             # 计算所有必要的梯度
             try:
-                du_grad = safe_compute_gradient(u, coords, 'u')
-                dv_grad = safe_compute_gradient(v, coords, 'v')
-                dw_grad = safe_compute_gradient(w, coords, 'w')
-                dp_grad = safe_compute_gradient(p, coords, 'p')
+                du_grad = compute_gradient_correct(u, coords, 'u')
+                dv_grad = compute_gradient_correct(v, coords, 'v')
+                dw_grad = compute_gradient_correct(w, coords, 'w')
+                dp_grad = compute_gradient_correct(p, coords, 'p')
                 
-                # 提取分量
-                # 连续性方程：对全部维度求散度近似
-                continuity = du_grad.sum(dim=-1) + dv_grad.sum(dim=-1) + dw_grad.sum(dim=-1)
+                # 连续性方程: ∂u/∂x + ∂v/∂y + ∂w/∂z = 0
+                # 使用前3维作为空间坐标
+                continuity = du_grad[:, 0] + dv_grad[:, 1] + dw_grad[:, 2]
                 
-                # 计算Navier-Stokes残差（简化动量项，避免对未知空间维的映射）
-                rho = self.materials_params['density']
-                mu = self.materials_params['viscosity']
+                # 动量方程 (简化的Stokes流，忽略惯性项)
+                # 对于低Reynolds数流动: -∇p + μ∇²u = 0
+                rho = self.materials_params.get('density', 1000.0)
+                mu = self.materials_params.get('viscosity', 0.001)
+                
+                # 计算拉普拉斯算子 (如果可能)
                 try:
-                    lap_u = self.safe_compute_laplacian_spatial(u, coords, spatial_dims)
-                    lap_v = self.safe_compute_laplacian_spatial(v, coords, spatial_dims)
-                    lap_w = self.safe_compute_laplacian_spatial(w, coords, spatial_dims)
+                    lap_u = self._compute_laplacian(u, coords, spatial_dims)
+                    lap_v = self._compute_laplacian(v, coords, spatial_dims)
+                    lap_w = self._compute_laplacian(w, coords, spatial_dims)
                 except Exception:
                     lap_u = torch.zeros_like(u)
                     lap_v = torch.zeros_like(v)
                     lap_w = torch.zeros_like(w)
-                # 使用压力梯度总和近似动量源项
-                dp_sum = dp_grad.sum(dim=-1)
-                momentum_u = mu * lap_u - (1.0 / rho) * dp_sum
-                momentum_v = mu * lap_v - (1.0 / rho) * dp_sum
-                momentum_w = mu * lap_w - (1.0 / rho) * dp_sum
+                
+                # 动量残差: μ∇²u - ∇p = 0
+                momentum_u = mu * lap_u - dp_grad[:, 0]
+                momentum_v = mu * lap_v - dp_grad[:, 1]
+                momentum_w = mu * lap_w - dp_grad[:, 2]
                 
                 return {
                     'continuity': continuity,
@@ -272,6 +273,45 @@ class PhysicsConstraints:
         except Exception as e:
             logger.error(f"Navier-Stokes残差计算失败: {str(e)}")
             return self._empty_residual(x, predictions)
+    
+    def _compute_laplacian(self, scalar_field, coords, spatial_dims=3):
+        """计算标量场的拉普拉斯算子"""
+        try:
+            laplacian = torch.zeros_like(scalar_field)
+            
+            # 计算一阶梯度
+            grad_outputs = torch.ones_like(scalar_field)
+            first_grad = torch.autograd.grad(
+                outputs=scalar_field,
+                inputs=coords,
+                grad_outputs=grad_outputs,
+                create_graph=True,
+                retain_graph=True,
+                allow_unused=True
+            )[0]
+            
+            if first_grad is None:
+                return laplacian
+            
+            # 计算二阶梯度 (对角线元素之和)
+            for i in range(min(spatial_dims, first_grad.shape[-1])):
+                grad_i = first_grad[:, i]
+                second_grad = torch.autograd.grad(
+                    outputs=grad_i,
+                    inputs=coords,
+                    grad_outputs=torch.ones_like(grad_i),
+                    create_graph=True,
+                    retain_graph=True,
+                    allow_unused=True
+                )[0]
+                
+                if second_grad is not None and i < second_grad.shape[-1]:
+                    laplacian = laplacian + second_grad[:, i]
+            
+            return laplacian
+            
+        except Exception:
+            return torch.zeros_like(scalar_field)
 
     def compute_volume_conservation_residual(self, x_phys: torch.Tensor, predictions: torch.Tensor):
         """
@@ -650,30 +690,27 @@ class PhysicsConstraints:
             # 计算cos(theta0)
             cos_theta0 = torch.cos(theta0_rad)
             
-            # 从预测中提取接触角信息（假设预测中包含接触角）
-            # 如果预测中没有直接的接触角，我们可以计算界面法线与电场方向的夹角
+            # 从预测中提取接触角信息
+            # 阶段3输出24维：[p, u, v, w, phi, E_z, E_x, vorticity_z, h, kappa, theta, ...]
+            # theta在索引10
             try:
-                # 假设predictions中包含接触角信息或界面特征
-                # 这里使用简单的方法，假设预测的某个分量表示接触角
-                # 在实际应用中，可能需要更复杂的方法来从流动场中提取接触角
-                if predictions.shape[1] >= 5:
-                    # 假设第5个分量是接触角(θ)
-                    theta_pred_deg = predictions[:, 4]
-                    theta_pred_rad = torch.radians(theta_pred_deg)
+                if predictions.shape[1] >= 11:
+                    # 索引10是接触角theta（单位：弧度）
+                    theta_pred_rad = predictions[:, 10]
                     cos_theta_pred = torch.cos(theta_pred_rad)
                 else:
-                    # 如果没有直接的接触角预测，计算Young-Lippmann方程的理论值
-                    # 并使用该值作为约束
+                    # 如果输出维度不足，使用零残差
                     cos_theta_pred = torch.zeros(batch_size, device=device)
-                    logger.warning("Young-Lippmann: 预测中没有接触角信息，将计算理论值作为约束")
+                    logger.warning(f"Young-Lippmann: 预测维度不足({predictions.shape[1]}<11)，无法提取接触角")
             except Exception as e:
                 logger.error(f"Young-Lippmann: 提取接触角信息失败: {str(e)}")
                 cos_theta_pred = torch.zeros(batch_size, device=device)
             
-            # 计算Young-Lippmann方程的右侧：cosθ₀ - (ε₀εᵣV²)/(2γd)
+            # 计算Young-Lippmann方程的右侧：cosθ₀ + (ε₀εᵣV²)/(2γd)
+            # 注意：电润湿效果使接触角减小，cos(θ)增大，所以是加号
             V_squared = applied_voltage ** 2
             term = (epsilon_0 * epsilon_r * V_squared) / (2 * gamma * d)
-            cos_theta_theory = cos_theta0 - term
+            cos_theta_theory = cos_theta0 + term
             
             # 限制cos_theta_theory的范围在[-1, 1]内
             cos_theta_theory = torch.clamp(cos_theta_theory, -1.0, 1.0)
@@ -755,12 +792,12 @@ class PhysicsConstraints:
             batch_size = x_interface.shape[0]
             
             # 提取材料参数
-            theta_adv_deg = self.material_params.get('dynamic_contact_angle_advancing', 120.0)
-            theta_rec_deg = self.material_params.get('dynamic_contact_angle_receding', 100.0)
-            theta0_deg = self.material_params.get('contact_angle_0', 110.0)
-            mu = self.material_params.get('viscosity_water', 0.001)
-            gamma = self.material_params.get('surface_tension_water', 0.072)
-            pinning_energy = self.material_params.get('pinning_energy', 1e-5)
+            theta_adv_deg = self.materials_params.get('dynamic_contact_angle_advancing', 120.0)
+            theta_rec_deg = self.materials_params.get('dynamic_contact_angle_receding', 100.0)
+            theta0_deg = self.materials_params.get('contact_angle_0', 110.0)
+            mu = self.materials_params.get('viscosity_water', 0.001)
+            gamma = self.materials_params.get('surface_tension_water', 0.072)
+            pinning_energy = self.materials_params.get('pinning_energy', 1e-5)
             
             # 转换角度为弧度
             theta_adv_rad = torch.tensor(np.radians(theta_adv_deg), device=device)
@@ -773,11 +810,15 @@ class PhysicsConstraints:
             cos_theta0 = torch.cos(theta0_rad)
             
             # 从预测中提取接触角信息
+            # 输出索引定义 (与数据生成一致):
+            # 0-2: u, v, w (速度)
+            # 3: p (压力)
+            # 4: alpha (体积分数)
+            # 10: theta (接触角，弧度)
             try:
-                if predictions.shape[1] >= 5:
-                    # 假设第5个分量是接触角(θ)
-                    theta_pred_deg = predictions[:, 4]
-                    theta_pred_rad = torch.radians(theta_pred_deg)
+                if predictions.shape[1] >= 11:
+                    # 索引10是接触角theta（单位：弧度）
+                    theta_pred_rad = predictions[:, 10]
                     cos_theta_pred = torch.cos(theta_pred_rad)
                 else:
                     # 如果没有直接的接触角预测，使用静态接触角
@@ -871,13 +912,13 @@ class PhysicsConstraints:
             batch_size = x_dielectric.shape[0]
             
             # 提取材料参数
-            epsilon_0 = self.material_params.get('epsilon_0', 8.854e-12)
-            relative_permittivity = self.material_params.get('relative_permittivity', 3.0)
-            dielectric_thickness = self.material_params.get('dielectric_thickness', 1e-6)
-            dielectric_conductivity = self.material_params.get('dielectric_conductivity', 1e-12)
-            charge_relaxation_time = self.material_params.get('charge_relaxation_time', 1e-3)
-            leakage_current_coefficient = self.material_params.get('leakage_current_coefficient', 1e-6)
-            max_charge_density = self.material_params.get('max_charge_density', 1e-4)
+            epsilon_0 = self.materials_params.get('epsilon_0', 8.854e-12)
+            relative_permittivity = self.materials_params.get('relative_permittivity', 3.0)
+            dielectric_thickness = self.materials_params.get('dielectric_thickness', 1e-6)
+            dielectric_conductivity = self.materials_params.get('dielectric_conductivity', 1e-12)
+            charge_relaxation_time = self.materials_params.get('charge_relaxation_time', 1e-3)
+            leakage_current_coefficient = self.materials_params.get('leakage_current_coefficient', 1e-6)
+            max_charge_density = self.materials_params.get('max_charge_density', 1e-4)
             
             # 转换为tensor
             epsilon_0_tensor = torch.tensor(epsilon_0, device=device)
@@ -1800,32 +1841,48 @@ class PINNConstraintLayer(nn.Module):
         # 物理约束对象
         self.physics_constraints = physics_constraints or PhysicsConstraints()
         
-        # 降低残差项权重，使训练更稳定
+        # 优化后的残差权重 - 基于真实器件物理（2024-11-27修正）
+        # 参考：generate_pyvista_3d.py 中的器件结构
         self.residual_weights = residual_weights or {
-            'continuity': 0.5,
-            'momentum_u': 0.05,
-            'momentum_v': 0.05,
-            'momentum_w': 0.05,
-            'young_lippmann': 0.5,  # Young-Lippmann方程约束权重
-            'contact_line_dynamics': 0.3,  # 接触线动力学约束权重
-            'dielectric_charge': 0.4,  # 介电层电荷积累约束权重
-            'thermodynamic': 0.2,  # 热力学约束权重
-            'interface_stability': 0.4,  # 界面稳定性约束权重
-            'frequency_response': 0.3,  # 频率响应约束权重
-            'optical_properties': 0.25,  # 光学特性约束权重
-            'energy_efficiency': 0.3,  # 能量效率约束权重
-            'volume_conservation': 0.05,  # 体积守恒软约束权重（双相）
-            'volume_consistency': 0.05,   # 体积分数一致性软约束权重（油墨）
-            'ink_potential_min': 0.1,  # 油墨势能最小化约束权重
-            'two_phase_continuity': 0.3,  # 双相流连续性方程权重
-            'two_phase_momentum_u': 0.05,  # 双相流动量方程u分量权重
-            'two_phase_momentum_v': 0.05,  # 双相流动量方程v分量权重
-            'two_phase_momentum_w': 0.05,  # 双相流动量方程w分量权重
-            'surface_tension': 0.2,  # 表面张力约束权重
-            'contact_angle_constraint': 0.3,  # 接触角约束权重
-            'interface_curvature': 0.2,  # 界面曲率约束权重
-            'ink_energy_balance': 0.1,  # 油墨能量平衡约束权重
-            'data_fit': 1.0
+            # === 核心物理约束（最重要）===
+            'young_lippmann': 2.0,  # ⬆️ Young-Lippmann方程 - 电润湿核心物理
+            'contact_angle_constraint': 1.0,  # ⬆️ 接触角约束 - 边界条件
+            'interface_stability': 0.5,  # 界面稳定性 - 保持平滑
+            'volume_conservation': 0.3,  # ⬆️ 体积守恒 - 油墨+极性液体=常数
+            
+            # === 界面相关约束 ===
+            'interface_curvature': 0.3,  # ⬆️ 界面曲率 - Laplace压力
+            'surface_tension': 0.3,  # ⬆️ 表面张力 - 界面能量
+            'contact_line_dynamics': 0.2,  # 接触线动力学
+            
+            # === 简化的流动约束（低Reynolds数）===
+            'continuity': 0.1,  # ⬇️ 连续性方程（低Re数不重要）
+            'momentum_u': 0.02,  # ⬇️ 动量方程（惯性可忽略）
+            'momentum_v': 0.02,  # ⬇️
+            'momentum_w': 0.02,  # ⬇️
+            'two_phase_continuity': 0.05,  # ⬇️ 双相流连续性（简化）
+            'two_phase_momentum_u': 0.01,  # ⬇️ 双相流动量（简化）
+            'two_phase_momentum_v': 0.01,  # ⬇️
+            'two_phase_momentum_w': 0.01,  # ⬇️
+            
+            # === 电学约束 ===
+            'dielectric_charge': 0.2,  # ⬇️ 介电层电荷积累
+            'frequency_response': 0.15,  # ⬇️ 频率响应
+            
+            # === 热学约束 ===
+            'thermodynamic': 0.1,  # ⬇️ 热力学（次要）
+            
+            # === 光学和能效 ===
+            'optical_properties': 0.15,  # ⬇️ 光学特性
+            'energy_efficiency': 0.15,  # ⬇️ 能量效率
+            
+            # === 需要重新定义的约束 ===
+            'volume_consistency': 0.05,  # 体积分数一致性
+            'ink_potential_min': 0.0,  # ⬇️ 暂时关闭（定义不清）
+            'ink_energy_balance': 0.05,  # ⬇️ 降低（需要重新定义）
+            
+            # === 数据拟合 ===
+            'data_fit': 1.0  # 保持
         }
         
         # 从配置中加载残差权重（如果提供）
@@ -2192,9 +2249,75 @@ class PINNConstraintLayer(nn.Module):
         
         return base_weight
     
+    def __call__(self, *args, **kwargs):
+        """
+        兼容多种调用方式的统一接口
+        支持：
+        1. 2参数调用: constraint_layer(physics_points, model_predictions)
+        2. 4参数调用: constraint_layer(x_data, x_phys, model_predictions, true_labels)
+        """
+        # 2参数调用（训练时使用）
+        if len(args) == 2 and not kwargs:
+            physics_points, model_predictions = args
+            # 计算简化的物理约束
+            return self._compute_simple_constraint(physics_points, model_predictions)
+        
+        # 4+参数调用（完整功能）
+        else:
+            return self.forward(*args, **kwargs)
+    
+    def _compute_simple_constraint(self, physics_points, model_predictions):
+        """
+        简化的物理约束计算（用于训练循环）
+        只计算梯度平滑性约束，确保快速且稳定
+        """
+        device = physics_points.device
+        
+        # 确保输入需要梯度
+        if not physics_points.requires_grad:
+            physics_points = physics_points.clone().requires_grad_(True)
+        
+        try:
+            # 计算梯度
+            grad_outputs = torch.ones_like(model_predictions)
+            gradients = torch.autograd.grad(
+                outputs=model_predictions,
+                inputs=physics_points,
+                grad_outputs=grad_outputs,
+                create_graph=True,
+                retain_graph=True,
+                allow_unused=True
+            )[0]
+            
+            if gradients is None:
+                # 如果梯度计算失败，使用预测值的方差
+                return torch.var(model_predictions) * 0.1
+            
+            # 梯度平滑性约束
+            grad_smoothness = torch.mean(gradients ** 2)
+            
+            # 输出合理性约束
+            output_penalty = torch.mean(torch.abs(model_predictions)) * 0.01
+            
+            # 梯度一致性约束
+            if gradients.shape[1] >= 3:
+                grad_diff = torch.std(gradients[:, :3], dim=1)
+                grad_consistency = torch.mean(grad_diff)
+            else:
+                grad_consistency = torch.tensor(0.0, device=device)
+            
+            # 组合约束
+            total_constraint = grad_smoothness + output_penalty + grad_consistency * 0.1
+            
+            return total_constraint
+            
+        except Exception as e:
+            logger.error(f"简化约束计算失败: {e}")
+            return torch.tensor(0.1, device=device, requires_grad=True)
+    
     def forward(self, x_data, x_phys, model_predictions, true_labels=None, applied_voltage=None, contact_line_velocity=None, time=None, temperature=None):
         """
-        前向传播 - 计算总损失
+        前向传播 - 计算总损失（完整功能）
         输入:
         - x_data: 数据点输入
         - x_phys: 物理点输入

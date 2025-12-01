@@ -1,0 +1,139 @@
+{
+  "metadata": {
+    "stage": "1_physics_validation",
+    "version": "1.0",
+    "created_at": "2024-11-27",
+    "description": "阶段1：物理一致性验证 - 确保模型学到真实物理",
+    "goal": "验证Young-Lippmann关系、体积守恒、界面稳定性",
+    "success_criteria": {
+      "young_lippmann_r2": 0.95,
+      "volume_conservation_error": 0.01,
+      "interface_smoothness": 0.90,
+      "training_stability": "no_nan_inf"
+    }
+  },
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_dims": [256, 256, 128, 64],
+    "activation": "gelu",
+    "use_batch_norm": true,
+    "use_residual": true,
+    "dropout": 0.05
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 32,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
+    "weight_decay": 1e-5,
+    "lr_scheduler": "step",
+    "warmup_epochs": 10,
+    "min_lr": 1e-5,
+    "early_stopping_patience": 150,
+    "gradient_clipping": 0.5,
+    "mixed_precision": true,
+    "_comment": "开启混合精度加速训练，节省显存"
+  },
+  "physics": {
+    "physics_weight": 0.1,
+    "_comment_weight": "降低物理权重，让模型先学数据",
+    "num_physics_points": 100,
+    "_comment_points": "减少物理点，避免显存不足",
+    "adaptive_physics_weight": true,
+    "_comment_adaptive": "启用自适应权重",
+    "residual_weights": {
+      "_comment": "=== 阶段1：极端聚焦核心物理 ===",
+      
+      "young_lippmann": 5.0,
+      "_young_lippmann_note": "中等权重 - 让模型逐步学习",
+      
+      "contact_angle_constraint": 1.0,
+      "_contact_angle_note": "降低权重",
+      
+      "volume_conservation": 1.0,
+      "_volume_note": "降低权重",
+      
+      "interface_stability": 0.5,
+      "_interface_note": "中高权重 - 界面平滑，避免非物理振荡",
+      
+      "interface_curvature": 0.5,
+      "surface_tension": 0.5,
+      
+      "_comment_others": "=== 其他约束极低，避免干扰 ===",
+      "continuity": 0.01,
+      "momentum_u": 0.01,
+      "momentum_v": 0.01,
+      "momentum_w": 0.01,
+      "two_phase_continuity": 0.01,
+      "two_phase_momentum_u": 0.005,
+      "two_phase_momentum_v": 0.005,
+      "two_phase_momentum_w": 0.005,
+      "contact_line_dynamics": 0.05,
+      "dielectric_charge": 0.05,
+      "thermodynamic": 0.01,
+      "frequency_response": 0.01,
+      "optical_properties": 0.01,
+      "energy_efficiency": 0.01,
+      "volume_consistency": 0.05,
+      "ink_potential_min": 0.0,
+      "ink_energy_balance": 0.01,
+      
+      "data_fit": 1.0
+    }
+  },
+  "data": {
+    "use_dynamic": false,
+    "_comment_dynamic": "设置为true启用动态时空数据生成",
+    "num_samples": 500,
+    "_comment_samples": "增加数据量提高学习效果",
+    "train_ratio": 0.6,
+    "val_ratio": 0.2,
+    "test_ratio": 0.2,
+    "normalization": "standard",
+    "augmentation": false,
+    "_comment_augmentation": "阶段1不增强，保持数据纯净",
+    "noise_level": 0.0,
+    "spatial_resolution": [10, 10, 5],
+    "temporal_resolution": 100,
+    "time_range": [0, 0.02],
+    "voltage_sequence": "step"
+  },
+  "validation": {
+    "interval": 5,
+    "metrics": [
+      "young_lippmann_linearity",
+      "volume_conservation",
+      "interface_smoothness",
+      "gradient_norm",
+      "loss_stability"
+    ],
+    "save_best": true,
+    "save_all_checkpoints": false
+  },
+  "monitoring": {
+    "track_physics_residuals": true,
+    "track_gradient_norms": true,
+    "track_weight_distributions": true,
+    "generate_diagnostic_plots": true,
+    "diagnostic_interval": 10
+  },
+  "output": {
+    "dir": "./stage1_physics_validation",
+    "save_checkpoints": true,
+    "checkpoint_interval": 20,
+    "save_visualizations": true,
+    "save_diagnostics": true
+  },
+  "seed": 42,
+  "deterministic": true,
+  "_comment_deterministic": "确定性训练，便于复现和调试",
+  "notes": [
+    "阶段1目标：验证模型能否学到真实物理",
+    "关键验证：cos(θ) vs V² 必须是线性的",
+    "如果R² < 0.95，说明模型没学到Young-Lippmann方程",
+    "体积守恒误差必须 < 1%",
+    "训练必须稳定，不能出现NaN/Inf",
+    "成功后进入阶段2：多尺度训练"
+  ]
+}

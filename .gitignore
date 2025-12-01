@@ -15,31 +15,34 @@ venv/
 *.swo
 .DS_Store
 
-# Project outputs and large artifacts
+# Project outputs and large artifacts (training results)
+outputs_*/
 output/
 results*/
 train_results/
+checkpoints/
 checkpoints_*/
 performance_reports/
 
-# Model and dataset files
+# Model checkpoint files (large binary files)
 *.pth
+
+# Dataset files
 *.npz
 *.pid
 *.csv
-*.log
 
-# Training and evaluation outputs
+# Log files
+*.log
+logs/
+
+# Training and evaluation outputs (images)
 *.png
 *.jpg
 *.jpeg
 *.gif
 *.pdf
 *.svg
-
-# Log files
-*.log
-logs/
 
 # Cache directories
 .pytest_cache/
@@ -48,11 +51,23 @@ logs/
 *.tmp
 *.temp
 
-# Configuration files with sensitive data
-*_config.json
-*_config.py
-
 # Backup files
 *.bak
 *.backup
 
+# Experiments output (exclude auto-generated results and configs)
+experiments/experiments/
+experiments/comparison_figures/
+experiments/reports/
+experiments/configs/exp_*.json
+experiments/configs/config_*.json
+experiments/configs/train_config_*.json
+experiments/configs/version_history.json
+
+# Keep config files but exclude sensitive ones
+# config_*.json files are tracked (training configs)
+
+# Local shell scripts (execution only, not needed in repo)
+run_stage2_optimized.sh
+run_stage2_training.sh
+check_optimization_ready.sh

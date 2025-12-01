@@ -3,6 +3,12 @@ import os
 import json
 import argparse
 import numpy as np
+import matplotlib
+# 设置英文显示以避免中文警告和乱码
+matplotlib.use("Agg")
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
 
 def load_report(path):

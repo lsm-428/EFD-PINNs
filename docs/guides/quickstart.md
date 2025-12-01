@@ -1,40 +1,42 @@
-# EFD3D 快速开始指南
+# EFD-PINNs 快速开始指南
 
-## 🚀 5分钟快速上手
+**最后更新**: 2025-12-01
+
+## 🚀 快速上手
 
 ### 1. 环境准备
 
 ```bash
-# 克隆项目
-git clone <your-repo-url>
-cd EFD3D
+# 激活conda环境
+conda activate efd
 
-# 创建虚拟环境（推荐）
-python -m venv efd3d-env
-source efd3d-env/bin/activate  # Linux/Mac
-# 或 efd3d-env\\Scripts\\activate  # Windows
-
-# 安装依赖
-pip install torch numpy matplotlib scikit-learn pytest
+# 验证环境
+python -c "import torch; print(f'PyTorch: {torch.__version__}')"
 ```
 
-### 2. 基础训练（5分钟）
+### 2. 基础训练
 
 ```bash
-# 运行短训练示例
-python efd_pinns_train.py --mode train --config config/exp_short_config.json --output-dir results_quick
+# 激活conda环境
+conda activate efd
+
+# 运行训练 (使用当前配置)
+python efd_pinns_train.py --mode train --config config_stage2_10k.json --epochs 200
 ```
 
 **预期输出：**
 - 训练进度显示
 - 损失曲线实时更新
-- 最终模型保存到 `results_quick/`
+- 最终模型保存到 `outputs_*/final_model.pth`
 
-### 3. 验证模型
+### 3. 分析结果
 
 ```bash
-# 测试训练好的模型
-python efd_pinns_train.py --mode test --model-path results_quick/final_model.pth --config config/exp_short_config.json
+# 动态响应分析
+python analyze_dynamic_response.py --model outputs_*/final_model.pth --output outputs_*/
+
+# 参数验证
+python verify_parameters.py
 ```
 
 ## 📋 完整工作流程

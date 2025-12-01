@@ -1,0 +1,135 @@
+{
+  "metadata": {
+    "config_version": "2.0",
+    "created_at": "2024-11-27",
+    "description": "优化的物理约束配置 - 基于真实电润湿器件结构",
+    "author": "EFD3D团队",
+    "reference": "generate_pyvista_3d.py - 器件结构定义",
+    "changes": [
+      "提高Young-Lippmann和接触角约束权重（核心物理）",
+      "降低两相流动量方程权重（低Reynolds数）",
+      "修正材料参数（粘度、表面张力）",
+      "暂时关闭定义不清的约束（ink_potential_min）"
+    ]
+  },
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_dims": [128, 128, 64, 32],
+    "activation": "relu",
+    "use_batch_norm": true,
+    "use_residual": true,
+    "dropout": 0.1
+  },
+  "training": {
+    "epochs": 200,
+    "batch_size": 64,
+    "optimizer": "adamw",
+    "learning_rate": 0.001,
+    "weight_decay": 1e-5,
+    "lr_scheduler": "cosine",
+    "warmup_epochs": 10,
+    "min_lr": 1e-6,
+    "early_stopping_patience": 20,
+    "gradient_clipping": 1.0
+  },
+  "physics": {
+    "physics_weight": 0.5,
+    "num_physics_points": 500,
+    "adaptive_physics_weight": true,
+    "residual_weights": {
+      "_comment_core": "=== 核心物理约束（最重要）===",
+      "young_lippmann": 2.0,
+      "contact_angle_constraint": 1.0,
+      "interface_stability": 0.5,
+      "volume_conservation": 0.3,
+      
+      "_comment_interface": "=== 界面相关约束 ===",
+      "interface_curvature": 0.3,
+      "surface_tension": 0.3,
+      "contact_line_dynamics": 0.2,
+      
+      "_comment_flow": "=== 简化的流动约束（低Reynolds数）===",
+      "continuity": 0.1,
+      "momentum_u": 0.02,
+      "momentum_v": 0.02,
+      "momentum_w": 0.02,
+      "two_phase_continuity": 0.05,
+      "two_phase_momentum_u": 0.01,
+      "two_phase_momentum_v": 0.01,
+      "two_phase_momentum_w": 0.01,
+      
+      "_comment_electric": "=== 电学约束 ===",
+      "dielectric_charge": 0.2,
+      "frequency_response": 0.15,
+      
+      "_comment_thermal": "=== 热学约束 ===",
+      "thermodynamic": 0.1,
+      
+      "_comment_optical": "=== 光学和能效 ===",
+      "optical_properties": 0.15,
+      "energy_efficiency": 0.15,
+      
+      "_comment_other": "=== 其他约束 ===",
+      "volume_consistency": 0.05,
+      "ink_potential_min": 0.0,
+      "ink_energy_balance": 0.05,
+      
+      "data_fit": 1.0
+    },
+    "material_params": {
+      "_comment": "修正后的材料参数（基于文献和实际器件）",
+      "density_polar": 1000.0,
+      "density_ink": 800.0,
+      "viscosity_polar": 0.001,
+      "viscosity_ink": 0.003,
+      "surface_tension_polar_ink": 0.045,
+      "contact_angle_theta0": 110.0,
+      "dielectric_thickness": 4e-7,
+      "relative_permittivity": 10.0
+    }
+  },
+  "data": {
+    "num_samples": 2000,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "normalization": "standard",
+    "augmentation": true,
+    "noise_level": 0.01
+  },
+  "device": {
+    "_comment": "器件结构参数（参考generate_pyvista_3d.py）",
+    "pixel_size": 184e-6,
+    "total_thickness": 20.855e-6,
+    "layers": {
+      "bottom_ITO": 27.5e-9,
+      "dielectric": 0.4e-6,
+      "hydrophobic": 0.4e-6,
+      "weir_height": 20e-6,
+      "ink_layer": 3e-6,
+      "polar_liquid": 17e-6,
+      "top_ITO": 27.5e-9
+    },
+    "operating_voltage": {
+      "min": 0.0,
+      "max": 30.0,
+      "typical": 15.0
+    }
+  },
+  "output": {
+    "dir": "./outputs_optimized",
+    "save_checkpoints": true,
+    "checkpoint_interval": 10,
+    "save_visualizations": true
+  },
+  "seed": 42,
+  "notes": [
+    "此配置基于真实电润湿显示器件结构",
+    "器件结构：底层ITO → 介电层 → 疏水层 → 围堰(油墨+极性液体) → 顶层ITO",
+    "核心物理：Young-Lippmann方程控制接触角变化",
+    "显示原理：电压改变接触角 → 油墨收缩 → 像素透明",
+    "Reynolds数很低(~0.1)，惯性项可忽略",
+    "响应时间：10-100ms，可用准静态或简化动力学模型"
+  ]
+}

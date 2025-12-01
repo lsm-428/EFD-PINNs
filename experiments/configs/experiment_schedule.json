@@ -1,0 +1,219 @@
+{
+  "experiment_schedule": {
+    "plan_id": "EFD3D_SCHEDULE_v1.0",
+    "created_at": "2025-01-15T10:30:00",
+    "description": "EFD3D项目实验执行时间表",
+    "total_phases": 3,
+    "total_duration_days": 14,
+    "estimated_compute_hours": 168,
+    
+    "phases": [
+      {
+        "phase_id": "PHASE_1",
+        "name": "基线验证阶段",
+        "duration": "3天",
+        "start_date": "2025-01-16",
+        "end_date": "2025-01-18",
+        "objectives": "建立性能基准，验证基础功能",
+        "experiments": [
+          {
+            "experiment_id": "EXP-001",
+            "name": "标准基线实验",
+            "priority": "high",
+            "estimated_duration_hours": 2,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": [],
+            "success_criteria": "val_loss < 0.1, 收敛稳定"
+          },
+          {
+            "experiment_id": "EXP-002",
+            "name": "短训练验证",
+            "priority": "high",
+            "estimated_duration_hours": 1,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-001"],
+            "success_criteria": "50轮内明显收敛趋势"
+          },
+          {
+            "experiment_id": "EXP-003",
+            "name": "长训练基准",
+            "priority": "medium",
+            "estimated_duration_hours": 6,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-001"],
+            "success_criteria": "训练稳定，无NaN/Inf"
+          }
+        ],
+        "deliverables": [
+          "性能基准报告",
+          "收敛性分析",
+          "训练稳定性评估"
+        ]
+      },
+      {
+        "phase_id": "PHASE_2",
+        "name": "架构优化阶段",
+        "duration": "5天",
+        "start_date": "2025-01-19",
+        "end_date": "2025-01-23",
+        "objectives": "测试不同网络架构，寻找最优配置",
+        "experiments": [
+          {
+            "experiment_id": "EXP-101",
+            "name": "深度网络测试",
+            "priority": "medium",
+            "estimated_duration_hours": 3,
+            "compute_requirements": "GPU, 12GB显存",
+            "dependencies": ["PHASE_1"],
+            "success_criteria": "验证损失优于基线，无严重过拟合"
+          },
+          {
+            "experiment_id": "EXP-102",
+            "name": "宽度网络测试",
+            "priority": "medium",
+            "estimated_duration_hours": 3,
+            "compute_requirements": "GPU, 16GB显存",
+            "dependencies": ["EXP-101"],
+            "success_criteria": "表达能力优于深度网络"
+          },
+          {
+            "experiment_id": "EXP-103",
+            "name": "残差连接测试",
+            "priority": "medium",
+            "estimated_duration_hours": 2,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-101"],
+            "success_criteria": "梯度传播改善，训练稳定性提升"
+          },
+          {
+            "experiment_id": "EXP-104",
+            "name": "注意力机制测试",
+            "priority": "low",
+            "estimated_duration_hours": 4,
+            "compute_requirements": "GPU, 16GB显存",
+            "dependencies": ["EXP-102"],
+            "success_criteria": "特征提取能力提升"
+          }
+        ],
+        "deliverables": [
+          "架构对比分析报告",
+          "最优架构推荐",
+          "计算效率评估"
+        ]
+      },
+      {
+        "phase_id": "PHASE_3",
+        "name": "高级优化阶段",
+        "duration": "6天",
+        "start_date": "2025-01-24",
+        "end_date": "2025-01-29",
+        "objectives": "调优训练策略，验证物理约束效果",
+        "experiments": [
+          {
+            "experiment_id": "EXP-201",
+            "name": "学习率调度对比",
+            "priority": "medium",
+            "estimated_duration_hours": 3,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["PHASE_2"],
+            "success_criteria": "收敛曲线平滑，无震荡"
+          },
+          {
+            "experiment_id": "EXP-202",
+            "name": "动态权重策略",
+            "priority": "medium",
+            "estimated_duration_hours": 4,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-201"],
+            "success_criteria": "物理约束平衡优化"
+          },
+          {
+            "experiment_id": "EXP-203",
+            "name": "梯度裁剪优化",
+            "priority": "low",
+            "estimated_duration_hours": 2,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-201"],
+            "success_criteria": "训练稳定性显著提升"
+          },
+          {
+            "experiment_id": "EXP-204",
+            "name": "正则化测试",
+            "priority": "low",
+            "estimated_duration_hours": 3,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-202"],
+            "success_criteria": "泛化能力改善"
+          },
+          {
+            "experiment_id": "EXP-205",
+            "name": "混合精度训练",
+            "priority": "low",
+            "estimated_duration_hours": 2,
+            "compute_requirements": "GPU, 8GB显存",
+            "dependencies": ["EXP-203"],
+            "success_criteria": "训练速度提升，内存效率改善"
+          }
+        ],
+        "deliverables": [
+          "优化策略对比报告",
+          "物理约束效果评估",
+          "最终性能优化建议"
+        ]
+      }
+    ],
+    
+    "resource_allocation": {
+      "compute_resources": {
+        "gpu_requirements": "NVIDIA GPU with 8GB+ VRAM",
+        "memory_requirements": "16GB+ system RAM",
+        "storage_requirements": "50GB+ free space"
+      },
+      "time_allocation": {
+        "daily_compute_hours": 12,
+        "weekend_availability": true,
+        "concurrent_experiments": 2
+      }
+    },
+    
+    "risk_mitigation": {
+      "technical_risks": [
+        {
+          "risk": "训练不收敛",
+          "mitigation": "提前验证配置，设置早停机制"
+        },
+        {
+          "risk": "显存不足",
+          "mitigation": "梯度累积，混合精度训练"
+        },
+        {
+          "risk": "数值不稳定",
+          "mitigation": "梯度裁剪，损失稳定器"
+        }
+      ],
+      "schedule_risks": [
+        {
+          "risk": "实验超时",
+          "mitigation": "设置时间限制，优先级排序"
+        },
+        {
+          "risk": "硬件故障",
+          "mitigation": "定期检查点，备份策略"
+        }
+      ]
+    },
+    
+    "success_metrics": {
+      "technical_success": {
+        "convergence_rate": ">90% experiments converge",
+        "performance_improvement": ">10% improvement over baseline",
+        "training_stability": "No NaN/Inf in >95% experiments"
+      },
+      "process_success": {
+        "schedule_adherence": ">80% on-time completion",
+        "resource_utilization": ">70% compute efficiency",
+        "documentation_completeness": "100% experiments documented"
+      }
+    }
+  }
+}

@@ -24,6 +24,10 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple
 
+# 实验管理器和配置版本化工具
+from experiment_management import ExperimentManager
+from config_versioning import ConfigVersionManager
+
 # 添加混合精度训练支持
 try:
     from torch.cuda.amp import autocast, GradScaler
@@ -58,8 +62,9 @@ try:
     from ewp_pinn_performance_monitor import ModelPerformanceMonitor
     from ewp_pinn_adaptive_hyperoptimizer import AdaptiveHyperparameterOptimizer
     from ewp_pinn_training_tracker import TrainingTracker
-    from scripts.generate_constraint_report import compute_constraint_stats
     from scripts.visualize_constraint_report import plot_residual_stats, plot_weight_series
+    # 将compute_constraint_stats的导入移到函数内部以避免循环导入
+    compute_constraint_stats = None
 except ImportError as e:
     print("[WARN] 部分内部模块导入失败，将跳过对应功能:", e)
     TrainingTracker = None
@@ -74,6 +79,9 @@ except ImportError:
     PhysicsEnhancedLoss = None
     AdvancedRegularizer = GradientNoiseRegularizer = apply_regularization_to_model = None
     EfficientEWPINN = create_optimized_model = get_model_optimization_suggestions = None
+
+# 物理约束层已修复，直接使用原始实现
+# PINNConstraintLayer 现在支持2参数调用: constraint_layer(physics_points, predictions)
 
 # OptimizedEWPINN 类实现 - 增强型神经网络架构
 class OptimizedEWPINN(nn.Module):
@@ -404,6 +412,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("EFD_PINNs_Train")
 
+# PINNConstraintLayer 已修复，支持灵活调用
+
 # 添加混合精度训练支持
 try:
     from torch.cuda.amp import autocast, GradScaler
@@ -490,7 +500,8 @@ def save_model(
 ):
     torch.save({
         "model_state_dict": model.state_dict(),
-        "normalizer": normalizer.state_dict() if normalizer else None,
+        "normalizer": normalizer[0].state_dict() if isinstance(normalizer, tuple) else (normalizer.state_dict() if normalizer else None),
+        "output_normalizer": normalizer[1].state_dict() if isinstance(normalizer, tuple) else None,
         "config": config or {},
         "metadata": metadata or {},
     }, save_path)
@@ -643,7 +654,276 @@ class DataNormalizer:
                 self.scaler = RobustScaler()
                 self.scaler.__dict__.update(state["scaler"])
 
-# 生成数据（兼容 3D 映射与 GPU 安全分批）
+# 生成动态电润湿数据（时空演化）
+def generate_dynamic_ewod_data(config: dict, device: torch.device):
+    """
+    生成电润湿动态仿真数据 - 包含时空演化
+    
+    特性:
+    - 空间网格: 10×10×5
+    - 时间序列: 100步, 0-20ms
+    - 电压序列: 阶跃响应
+    - 动态接触角: 指数衰减
+    - 边界效应: 钉扎
+    - 流场: 基于接触线速度
+    """
+    logger.info("🌊 生成动态电润湿数据（时空演化）")
+    
+    # 从配置读取参数
+    data_config = config.get("data", {})
+    materials_config = config.get("materials", {})
+    geometry_config = config.get("geometry", {})
+    num_samples_target = data_config.get("num_samples", 1000)
+    
+    # 空间离散 - 从配置读取真实器件尺寸
+    Lx = geometry_config.get("Lx", 184e-6)
+    Ly = geometry_config.get("Ly", 184e-6)
+    Lz = geometry_config.get("Lz", 20.855e-6)
+    nx, ny, nz = 10, 10, 5
+    x = np.linspace(0, Lx, nx)
+    y = np.linspace(0, Ly, ny)
+    z = np.linspace(0, Lz, nz)
+    
+    # 时间离散
+    time_range = data_config.get("time_range", [0, 0.02])
+    T_total = time_range[1]
+    nt = data_config.get("temporal_resolution", 100)
+    t = np.linspace(0, T_total, nt)
+    dt = t[1] - t[0]
+    
+    # 电压序列（阶跃响应）
+    voltage_range = data_config.get("voltage_range", [0, 30])
+    V_max = voltage_range[1]
+    V_seq = np.zeros(nt)
+    V_seq[20:60] = V_max  # 在4-12ms施加电压
+    
+    # 物理参数 - 从配置读取真实材料属性
+    theta0 = materials_config.get("theta0", 110.0)
+    
+    # 动力学参数 - 从配置读取
+    dynamics_config = data_config.get("dynamics_params", {})
+    tau = dynamics_config.get("tau", 8e-3)  # 时间常数(默认8ms)
+    zeta = dynamics_config.get("zeta", 0.7)  # 阻尼比 (默认欠阻尼)
+    
+    epsilon_r = materials_config.get("epsilon_r", 4.0)
+    gamma = materials_config.get("gamma", 0.072)
+    d = materials_config.get("dielectric_thickness", 0.4e-6)
+    epsilon_0 = 8.854e-12  # 真空介电常数 (F/m)
+    
+    # 二阶系统参数
+    omega_0 = 2 * np.pi / tau  # 自然频率
+    omega_d = omega_0 * np.sqrt(1 - zeta**2)  # 阻尼频率
+    
+    logger.info(f"   动力学参数: tau={tau*1000:.1f}ms, zeta={zeta:.2f}, omega_0={omega_0:.1f}rad/s")
+    logger.info(f"   材料参数: ε_r={epsilon_r}, γ={gamma:.4f}N/m, d={d*1e6:.1f}μm")
+    logger.info(f"   器件尺寸: {Lx*1e6:.1f}×{Ly*1e6:.1f}×{Lz*1e6:.3f}μm")
+    
+    # 存储数据
+    X_all = []
+    Y_all = []
+    
+    # 初始化状态
+    theta_field = np.ones((nx, ny)) * theta0
+    h_field = np.ones((nx, ny)) * Lz * 0.5  # 初始高度
+    theta_prev_field = np.ones((nx, ny)) * theta0  # 上一时刻接触角
+    theta_eq_prev = theta0  # 上一时刻平衡接触角
+    t_since_change = np.zeros((nx, ny))  # 自电压变化以来的时间
+    
+    logger.info(f"   空间网格: {nx}×{ny}×{nz}")
+    logger.info(f"   时间步数: {nt} (0-{T_total*1000:.1f}ms)")
+    logger.info(f"   电压范围: {V_seq.min():.1f}-{V_seq.max():.1f}V")
+    
+    for ti in range(nt):
+        V_current = V_seq[ti]
+        t_current = t[ti]
+        
+        # 计算平衡接触角
+        cos_theta0_rad = np.cos(np.radians(theta0))
+        term = (epsilon_0 * epsilon_r * V_current**2) / (2 * gamma * d)
+        cos_theta_eq = np.clip(cos_theta0_rad + term, -1, 1)
+        theta_eq = np.degrees(np.arccos(cos_theta_eq))
+        
+        for xi in range(nx):
+            for yi in range(ny):
+                for zi in range(nz):
+                    # 当前位置
+                    x_pos = x[xi]
+                    y_pos = y[yi]
+                    z_pos = z[zi]
+                    
+                    # 动态接触角（二阶欠阻尼系统）
+                    if ti == 0:
+                        theta_current = theta0
+                        theta_prev = theta0
+                        t_since_change[xi, yi] = 0
+                    else:
+                        theta_prev = theta_field[xi, yi]
+                        
+                        # 检测电压变化
+                        if ti > 0 and V_seq[ti] != V_seq[ti-1]:
+                            t_since_change[xi, yi] = 0  # 重置时间
+                            theta_eq_prev = theta_eq  # 更新目标
+                        else:
+                            t_since_change[xi, yi] += dt
+                        
+                        t_local = t_since_change[xi, yi]
+                        
+                        # 二阶欠阻尼响应
+                        # θ(t) = θ_eq + (θ_0 - θ_eq) * e^(-ζω₀t) * [cos(ω_d*t) + (ζ/√(1-ζ²))*sin(ω_d*t)]
+                        exp_term = np.exp(-zeta * omega_0 * t_local)
+                        cos_term = np.cos(omega_d * t_local)
+                        sin_term = np.sin(omega_d * t_local)
+                        damping_factor = zeta / np.sqrt(1 - zeta**2) if zeta < 1 else 0
+                        
+                        theta_current = theta_eq + (theta_prev_field[xi, yi] - theta_eq) * exp_term * (
+                            cos_term + damping_factor * sin_term
+                        )
+                    
+                    theta_prev_field[xi, yi] = theta_prev
+                    theta_field[xi, yi] = theta_current
+                    
+                    # 边界效应（钉扎）
+                    dist_to_edge = min(x_pos, Lx-x_pos, y_pos, Ly-y_pos)
+                    if dist_to_edge < 0.1 * Lx:
+                        pinning_factor = 1 - dist_to_edge / (0.1 * Lx)
+                        theta_current += 5 * pinning_factor
+                    
+                    # 墨水高度（基于接触角和体积守恒）
+                    h_current = Lz * (180 - theta_current) / (180 - theta0)
+                    h_field[xi, yi] = h_current
+                    
+                    # 计算到中心的距离（所有时间步都需要）
+                    r = np.sqrt((x_pos - Lx/2)**2 + (y_pos - Ly/2)**2)
+                    
+                    # 速度场（基于接触线运动）
+                    if ti > 0:
+                        dtheta_dt = (theta_current - theta_prev) / dt  # 度/秒
+                        dtheta_dt_rad = np.radians(dtheta_dt)  # 弧度/秒
+                        
+                        # 接触线速度 U_cl (m/s)
+                        # 典型值: 0.001-0.1 m/s
+                        mu = 0.001  # 动态粘度 (Pa·s)
+                        U_cl = -gamma * dtheta_dt_rad / (3 * mu)
+                        
+                        # 限制速度范围 (物理合理性)
+                        U_cl = np.clip(U_cl, -0.1, 0.1)  # 最大 0.1 m/s
+                        
+                        # 速度场（简化为径向流动）
+                        if r > 1e-9:
+                            u = U_cl * (x_pos - Lx/2) / r
+                            v = U_cl * (y_pos - Ly/2) / r
+                        else:
+                            u, v = 0, 0
+                        w = -U_cl * 0.1  # 垂直分量
+                    else:
+                        u, v, w = 0, 0, 0
+                    
+                    # 压力（Laplace压力）
+                    theta_rad = np.radians(theta_current)
+                    R = h_current / np.sin(theta_rad) if np.sin(theta_rad) > 1e-9 else h_current
+                    p = gamma * 2 / R if R > 0 else 0
+                    
+                    # 体积分数（简化）
+                    alpha = 1.0 if z_pos < h_current else 0.0
+                    
+                    # 构建输入特征 (62维)
+                    X_sample = np.zeros(62, dtype=np.float32)
+                    X_sample[0] = x_pos / Lx  # 归一化x
+                    X_sample[1] = y_pos / Ly  # 归一化y
+                    X_sample[2] = z_pos / Lz  # 归一化z
+                    X_sample[3] = t_current / T_total  # 归一化t
+                    X_sample[4] = np.sin(2*np.pi*t_current/T_total)  # 时间相位
+                    X_sample[5] = V_current / 80.0  # 归一化V
+                    X_sample[6] = dist_to_edge / Lx  # 到边界距离
+                    X_sample[7] = r / Lx  # 到中心距离
+                    # 其他特征填充合理值
+                    X_sample[8:] = np.random.randn(54) * 0.01
+                    
+                    # 构建输出 (24维) - 与物理约束索引一致
+                    # 索引定义:
+                    # 0-2: u, v, w (速度)
+                    # 3: p (压力)
+                    # 4: alpha (体积分数)
+                    # 5: h (界面高度)
+                    # 6: kappa (界面曲率)
+                    # 7-9: 界面斜率
+                    # 10: theta (接触角，弧度)
+                    # 11: theta_eq (平衡接触角，弧度)
+                    # 12-14: 接触线参数
+                    # 15-23: 其他参数
+                    Y_sample = np.zeros(24, dtype=np.float32)
+                    Y_sample[0] = u  # 速度u
+                    Y_sample[1] = v  # 速度v
+                    Y_sample[2] = w  # 速度w
+                    Y_sample[3] = p  # 压力
+                    Y_sample[4] = alpha  # 体积分数
+                    Y_sample[5] = h_current  # 界面高度 (m)
+                    Y_sample[6] = 0.0  # 界面曲率 (简化)
+                    Y_sample[7] = 0.0  # 界面斜率x
+                    Y_sample[8] = 0.0  # 界面斜率y
+                    Y_sample[9] = 0.0  # 界面斜率z
+                    Y_sample[10] = theta_rad  # 接触角 (弧度)
+                    Y_sample[11] = np.radians(theta_eq)  # 平衡接触角 (弧度)
+                    Y_sample[12] = r  # 接触线半径
+                    Y_sample[13] = np.cos(theta_rad)  # cos(θ)
+                    # 其他输出填充小随机值
+                    Y_sample[14:] = np.random.randn(10) * 0.01
+                    
+                    X_all.append(X_sample)
+                    Y_all.append(Y_sample)
+    
+    # 转换为数组
+    X_all = np.array(X_all, dtype=np.float32)
+    Y_all = np.array(Y_all, dtype=np.float32)
+    
+    logger.info(f"✅ 生成了 {len(X_all)} 个动态样本")
+    logger.info(f"   时间范围: 0-{T_total*1000:.1f}ms")
+    logger.info(f"   电压范围: {V_seq.min()}-{V_seq.max()}V")
+    logger.info(f"   接触角范围: {np.degrees(Y_all[:, 10]).min():.1f}-{np.degrees(Y_all[:, 10]).max():.1f}°")
+    logger.info(f"   速度u范围: {Y_all[:, 0].min():.6f}-{Y_all[:, 0].max():.6f} m/s")
+    
+    # 如果样本数超过目标，随机采样
+    if len(X_all) > num_samples_target:
+        indices = np.random.choice(len(X_all), num_samples_target, replace=False)
+        X_all = X_all[indices]
+        Y_all = Y_all[indices]
+        logger.info(f"   随机采样到 {num_samples_target} 个样本")
+    
+    # 标准化输入
+    normalizer = DataNormalizer(method=config.get("normalization", "standard"))
+    normalizer.fit(X_all)
+    X_norm = normalizer.transform(X_all)
+    
+    # 标准化输出 - 修复：输出数据也需要归一化
+    output_normalizer = DataNormalizer(method="standard")
+    output_normalizer.fit(Y_all)
+    Y_norm = output_normalizer.transform(Y_all)
+    logger.info(f"   输出数据已归一化: Y范围 [{Y_norm.min():.2f}, {Y_norm.max():.2f}]")
+    
+    # 划分数据集
+    n_total = len(X_all)
+    n_train = int(0.7 * n_total)
+    n_val = int(0.15 * n_total)
+    
+    indices = np.random.permutation(n_total)
+    train_idx = indices[:n_train]
+    val_idx = indices[n_train:n_train+n_val]
+    test_idx = indices[n_train+n_val:]
+    
+    X_train = torch.tensor(X_norm[train_idx], device=device)
+    Y_train = torch.tensor(Y_norm[train_idx], device=device)  # 使用归一化后的Y
+    X_val = torch.tensor(X_norm[val_idx], device=device)
+    Y_val = torch.tensor(Y_norm[val_idx], device=device)  # 使用归一化后的Y
+    X_test = torch.tensor(X_norm[test_idx], device=device)
+    Y_test = torch.tensor(Y_norm[test_idx], device=device)  # 使用归一化后的Y
+    
+    # 物理点（用于物理约束）
+    physics_points = torch.tensor(X_norm[::10], device=device)  # 每10个取1个
+    
+    # 返回两个归一化器（输入和输出）
+    return X_train, Y_train, X_val, Y_val, X_test, Y_test, physics_points, (normalizer, output_normalizer)
+
+# 生成数据（使用正确的输入层生成物理一致的数据）
 def generate_training_data(
     config: dict,
     num_samples: int,
@@ -657,23 +937,51 @@ def generate_training_data(
         logger.info("🚀 quick_run 模式，强制 num_samples=500")
         num_samples = 500
 
-    # 简单示例：随机生成输入 + 单位验证
-    model_config = config.get("模型", {})
-    dim = model_config.get("input_dim", 62)
-    X = np.random.randn(num_samples, dim).astype(np.float32)
-    # 模拟输出：24 维
+    # 直接生成物理一致的数据 - 简化版
+    model_config = config.get("模型", config.get("model", {}))
+    materials_config = config.get("materials", {})
+    data_config = config.get("data", {})
+    
+    input_dim = model_config.get("input_dim", 62)
     output_dim = model_config.get("output_dim", 24)
-    y = np.sin(X[:, 0:1]) + 0.1 * np.random.randn(num_samples, output_dim)
-    y = y.astype(np.float32)
+    
+    # 生成62维输入
+    X = np.random.rand(num_samples, input_dim).astype(np.float32)
+    
+    # 关键：第6列是电压V (归一化到0-1)
+    V_norm = X[:, 5]
+    voltage_range = data_config.get("voltage_range", [0, 30])
+    V_max = voltage_range[1] if isinstance(voltage_range, list) else 30.0
+    V_real = V_norm * V_max  # 从配置读取电压范围
+    
+    # Young-Lippmann方程计算接触角 - 从配置读取真实器件参数
+    theta0 = materials_config.get("theta0", 110.0)
+    epsilon_r = materials_config.get("epsilon_r", 4.0)      # SU-8介电层
+    gamma = materials_config.get("gamma", 0.072)            # 油-水界面张力 N/m
+    d = materials_config.get("dielectric_thickness", 0.4e-6)  # 介电层厚度 m
+    epsilon_0 = 8.854e-12
+    
+    cos_theta0 = np.cos(np.radians(theta0))
+    term = (epsilon_0 * epsilon_r * V_real**2) / (2 * gamma * d)
+    cos_theta = np.clip(cos_theta0 + term, -1, 1)
+    theta = np.degrees(np.arccos(cos_theta))
+    
+    # 生成24维输出
+    y = np.zeros((num_samples, output_dim), dtype=np.float32)
+    y[:, 0] = theta  # 第1列：接触角
+    
+    # 简化流场
+    theta_rad = np.radians(theta)
+    y[:, 1] = 0.1 * np.cos(2*np.pi*X[:, 0]) * (1 - theta_rad/np.pi)  # u
+    y[:, 2] = 0.1 * np.sin(2*np.pi*X[:, 1]) * (1 - theta_rad/np.pi)  # v
+    y[:, 3] = 0.05 * np.sin(2*np.pi*X[:, 2]) * (1 - theta_rad/np.pi)  # w
+    y[:, 4] = 100 * (1 - X[:, 0]) * (1 - X[:, 1]) * (theta_rad/np.pi)  # p
+    y[:, 5:] = np.random.randn(num_samples, output_dim-5) * 0.01
+    
+    logger.info(f"✅ 生成{num_samples}个样本，V: {V_real.min():.1f}-{V_real.max():.1f}V, θ: {theta.min():.1f}-{theta.max():.1f}°")
 
-    # 单位验证（可选）
-    try:
-        validate_units(X, y)
-    except Exception as e:
-        logger.warning(f"单位验证跳过: {e}")
-
-    # 物理点（占位）- 使用与输入相同的维度
-    physics_points = torch.randn(min(1000, num_samples // 2), dim, device=device)  # 直接放目标设备
+    # 物理点
+    physics_points = torch.rand(min(100, num_samples // 2), input_dim, device=device)
 
     # 标准化
     normalizer = DataNormalizer(method=config.get("normalization", "standard"))
@@ -796,8 +1104,15 @@ def progressive_training_enhanced(
     # 数据增强配置
     augmentation_config = config.get('data_augmentation', {})
     
-    # 生成数据
-    X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_training_data(
+    # 选择数据生成方式
+    use_dynamic_data = config.get("data", {}).get("use_dynamic", False)
+    
+    if use_dynamic_data:
+        logger.info("📊 使用动态数据生成（时空演化）")
+        X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_dynamic_ewod_data(config, device)
+    else:
+        logger.info("📊 使用静态数据生成")
+        X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_training_data(
         config, args.num_samples, device, output_dir, args.use_3d_mapping, args.gpu_safe, args.quick_run
     )
     
@@ -855,15 +1170,56 @@ def progressive_training_enhanced(
             # 前向传播
             pred = model(Xb)
             
-            # 计算物理损失
-            physics_loss = torch.tensor(0.0, device=device)
-            if PINNConstraintLayer and physics_points.size(0):
-                phy_layer = PINNConstraintLayer()
-                preds_phy = model(physics_points)
-                physics_loss, _ = phy_layer.compute_physics_loss(physics_points, preds_phy)
+            # 处理字典输出
+            if isinstance(pred, dict):
+                if 'main_predictions' in pred:
+                    pred_tensor = pred['main_predictions']
+                else:
+                    for v in pred.values():
+                        if isinstance(v, torch.Tensor) and v.dim() >= 2:
+                            pred_tensor = v
+                            break
+            else:
+                pred_tensor = pred
+            
+            # 计算物理损失 - 关键修复 (2025-11-29)
+            physics_loss = torch.tensor(0.0, device=device, requires_grad=True)
+            if ExternalPINNConstraintLayer and physics_points.size(0) > 0:
+                # 使用ewp_pinn_physics.py中的完整PINNConstraintLayer
+                phy_layer = ExternalPINNConstraintLayer(config=config)
+                
+                # 关键修复: 确保physics_points启用梯度追踪
+                x_phys = physics_points.clone().detach().requires_grad_(True)
+                
+                # 通过模型前向传播建立计算图连接
+                preds_phy = model(x_phys)
+                
+                # 处理字典输出
+                if isinstance(preds_phy, dict):
+                    if 'main_predictions' in preds_phy:
+                        preds_phy_tensor = preds_phy['main_predictions']
+                    else:
+                        for v in preds_phy.values():
+                            if isinstance(v, torch.Tensor) and v.dim() >= 2:
+                                preds_phy_tensor = v
+                                break
+                else:
+                    preds_phy_tensor = preds_phy
+                
+                # 生成applied_voltage数据 (0-30V范围，修正为真实器件工作电压)
+                applied_voltage = torch.rand(x_phys.size(0), device=device) * 30.0
+                
+                # 计算物理损失
+                physics_loss, residual_details = phy_layer.compute_physics_loss(
+                    x_phys, preds_phy_tensor, applied_voltage=applied_voltage
+                )
+                
+                # 确保physics_loss是tensor
+                if not isinstance(physics_loss, torch.Tensor):
+                    physics_loss = torch.tensor(physics_loss, device=device, requires_grad=True)
             
             # 使用损失稳定器计算总损失
-            loss = loss_stabilizer.compute_loss(pred, yb, physics_loss, physics_weight)
+            loss = loss_stabilizer.compute_loss(pred_tensor, yb, physics_loss, physics_weight)
             
             # 反向传播
             loss.backward()
@@ -886,18 +1242,39 @@ def progressive_training_enhanced(
         # 验证
         if epoch % args.validation_interval == 0 or epoch == args.epochs - 1:
             model.eval()
+            
+            # 数据损失 (不需要梯度)
             with torch.no_grad():
                 pred_val = model(X_val)
+                # 处理字典输出
+                if isinstance(pred_val, dict):
+                    pred_val = pred_val.get('main_predictions', list(pred_val.values())[0])
                 val_mse = nn.MSELoss()(pred_val, y_val)
+            
+            # 物理损失 (需要梯度来计算残差)
+            val_physics_loss = torch.tensor(0.0, device=device)
+            if ExternalPINNConstraintLayer and physics_points.size(0) > 0:
+                # 使用ewp_pinn_physics.py中的完整PINNConstraintLayer
+                phy_layer = ExternalPINNConstraintLayer(config=config)
                 
-                # 验证时的物理损失
-                val_physics_loss = torch.tensor(0.0, device=device)
-                if PINNConstraintLayer and physics_points.size(0):
-                    phy_layer = PINNConstraintLayer()
-                    preds_phy_val = model(physics_points)
-                    val_physics_loss, _ = phy_layer.compute_physics_loss(physics_points, preds_phy_val)
+                # 启用梯度计算物理残差
+                x_phys_val = physics_points.clone().detach().requires_grad_(True)
+                preds_phy_val = model(x_phys_val)
                 
-                val_total_loss = val_mse + physics_weight * val_physics_loss
+                # 处理字典输出
+                if isinstance(preds_phy_val, dict):
+                    preds_phy_val = preds_phy_val.get('main_predictions', list(preds_phy_val.values())[0])
+                
+                applied_voltage = torch.rand(x_phys_val.size(0), device=device) * 30.0
+                val_physics_loss, _ = phy_layer.compute_physics_loss(
+                    x_phys_val, preds_phy_val, applied_voltage=applied_voltage
+                )
+                
+                # 分离梯度，只用于记录
+                if isinstance(val_physics_loss, torch.Tensor):
+                    val_physics_loss = val_physics_loss.detach()
+            
+            val_total_loss = val_mse + physics_weight * val_physics_loss
             
             # 更新历史
             history["train_loss"].append(avg_train_loss)
@@ -1210,6 +1587,16 @@ def validate_model(
     args,
     dynamic_weight_integration=None,
 ) -> Tuple[float, float]:
+    # 输入验证
+    if X_val is None or y_val is None or X_val.size(0) == 0 or y_val.size(0) == 0:
+        logger.warning("验证数据为空或无效")
+        return float('inf'), 0.0
+    
+    # 检查数据中是否有NaN
+    if torch.isnan(X_val).any() or torch.isnan(y_val).any():
+        logger.warning("验证数据中包含NaN值")
+        return float('inf'), 0.0
+    
     # 动态权重
     if dynamic_weight_integration:
         physics_weight = dynamic_weight_integration.get_weight()
@@ -1217,37 +1604,60 @@ def validate_model(
         physics_weight = args.physics_weight
     
     model.eval()
-    with torch.no_grad():
-        pred = model(X_val)
-        mse_loss = nn.MSELoss()(pred, y_val)
+    try:
+        with torch.no_grad():
+            pred = model(X_val)
+            
+            # 检查预测结果
+            if torch.isnan(pred).any() or torch.isinf(pred).any():
+                logger.warning("模型预测结果包含NaN或inf")
+                return float('inf'), 0.0
+            
+            mse_loss = nn.MSELoss()(pred, y_val)
+            
+            # 初始化物理损失
+            physics_loss = torch.tensor(0.0, device=device)
+            
+            # 计算物理约束损失
+            if physics_points is not None and physics_points.size(0) > 0:
+                try:
+                    # 使用torch.no_grad的上下文，但需要临时启用梯度
+                    with torch.enable_grad():
+                        from ewp_pinn_physics import PINNConstraintLayer
+                        constraint_layer = PINNConstraintLayer(config=config).to(device)
+                        # 确保物理点需要梯度
+                        physics_points_val = physics_points.clone().to(device)
+                        physics_points_val.requires_grad_(True)
+                        # 计算物理输出
+                        physics_outputs = model(physics_points_val)
+                        # 生成applied_voltage数据 (0-80V范围)
+                        applied_voltage = torch.rand(physics_points_val.size(0), device=device) * 80.0
+                        # 生成contact_line_velocity数据 (典型范围 0-0.01 m/s)
+                        contact_line_velocity = torch.rand(physics_points_val.size(0), device=device) * 0.01
+                        # 调用compute_physics_loss方法，传递applied_voltage和contact_line_velocity
+                        physics_loss_dict = constraint_layer.compute_physics_loss(
+                            physics_points_val, physics_outputs, 
+                            applied_voltage=applied_voltage,
+                            contact_line_velocity=contact_line_velocity
+                        )
+                        physics_loss = physics_loss_dict[0] if isinstance(physics_loss_dict, tuple) else physics_loss_dict
+                except Exception as e:
+                    logger.warning(f"验证时物理损失计算失败: {e}")
+                    physics_loss = torch.tensor(0.05, device=device)
         
-        # 初始化物理损失
-        physics_loss = torch.tensor(0.0, device=device)
+        # 计算总损失
+        total_loss = mse_loss + physics_weight * physics_loss
         
-        # 计算物理约束损失
-        if physics_points is not None and physics_points.size(0) > 0:
-            try:
-                # 使用torch.no_grad的上下文，但需要临时启用梯度
-                with torch.enable_grad():
-                    # 创建物理约束层
-                    constraint_layer = PINNConstraintLayer(config).to(device)
-                    # 确保物理点需要梯度
-                    physics_points_val = physics_points.clone().to(device)
-                    physics_points_val.requires_grad_(True)
-                    # 计算物理输出
-                    physics_outputs = model(physics_points_val)
-                    # 计算物理约束
-                    physics_constraint = constraint_layer(physics_points_val, physics_outputs)
-                    # 确保physics_constraint是正确的标量
-                    physics_loss = torch.mean(physics_constraint ** 2)
-            except Exception as e:
-                logger.warning(f"验证时物理损失计算失败: {e}")
-                physics_loss = torch.tensor(0.05, device=device)
-    
-    model.train()
-    
-    # 计算总损失
-    total_loss = mse_loss + physics_weight * physics_loss
+        # 检查损失值
+        if torch.isnan(total_loss) or torch.isinf(total_loss):
+            logger.warning(f"验证损失为NaN或inf: mse={mse_loss.item()}, physics={physics_loss.item()}")
+            return float('inf'), physics_loss.item() if not torch.isinf(physics_loss) else 0.0
+        
+    except Exception as e:
+        logger.error(f"验证过程发生错误: {e}")
+        return float('inf'), 0.0
+    finally:
+        model.train()
     
     return total_loss.item(), physics_loss.item()
 
@@ -1277,10 +1687,13 @@ def train_one_epoch(
         physics_points.requires_grad_(True)
         # 创建一次约束层，避免每次循环都创建
         try:
-            constraint_layer = PINNConstraintLayer(config).to(device)
+            from ewp_pinn_physics import PINNConstraintLayer
+            constraint_layer = PINNConstraintLayer(config=config).to(device)
+            logger.info("✅ PINNConstraintLayer 创建成功")
         except Exception as e:
             logger.warning(f"创建物理约束层失败: {e}")
             use_physics = False
+            constraint_layer = None
     
     for i, (Xb, yb) in enumerate(loader):
         Xb, yb = Xb.to(device, non_blocking=True), yb.to(device, non_blocking=True)
@@ -1301,8 +1714,17 @@ def train_one_epoch(
                 try:
                     # 复用物理点和约束层
                     physics_outputs = model(physics_points)
-                    physics_constraint = constraint_layer(physics_points, physics_outputs)
-                    physics = torch.mean(physics_constraint ** 2)
+                    # 生成applied_voltage数据 (0-80V范围)
+                    applied_voltage = torch.rand(physics_points.size(0), device=device) * 80.0
+                    # 生成contact_line_velocity数据 (典型范围 0-0.01 m/s)
+                    contact_line_velocity = torch.rand(physics_points.size(0), device=device) * 0.01
+                    # 调用compute_physics_loss方法，传递applied_voltage和contact_line_velocity
+                    physics_loss_dict = constraint_layer.compute_physics_loss(
+                        physics_points, physics_outputs, 
+                        applied_voltage=applied_voltage,
+                        contact_line_velocity=contact_line_velocity
+                    )
+                    physics = physics_loss_dict[0] if isinstance(physics_loss_dict, tuple) else physics_loss_dict
                 except Exception as e:
                     logger.warning(f"物理损失计算失败: {e}")
                     physics = torch.tensor(0.05, device=device)
@@ -1536,7 +1958,7 @@ class MultiStageTrainer:
         # 为了测试目的，直接返回模拟的损失历史
         return {'train': [0.1, 0.05, 0.01], 'val': [0.12, 0.06, 0.02]}
         
-    def run(self, model, optimizer, scheduler, train_loader, X_val, y_val, X_test, y_test, physics_points, normalizer, history, performance_monitor=None, training_tracker=None, gradient_accumulation_steps=1):
+    def run(self, model, optimizer, scheduler, train_loader, X_val, y_val, X_test, y_test, physics_points, normalizer, history, performance_monitor=None, training_tracker=None, gradient_accumulation_steps=1, experiment_manager=None):
         """执行多阶段训练，集成所有脚本的核心功能，支持梯度累积和混合精度训练"""
         # 确保history字典包含所有必要的键
         if "physics_weight" not in history:
@@ -1646,6 +2068,38 @@ class MultiStageTrainer:
                         except Exception as e:
                             logger.warning(f"⚠️  记录到训练跟踪器失败: {e}")
                     
+                    # 记录到实验管理器
+                    if experiment_manager is not None:
+                        try:
+                            # 使用正确的方法名log_training_metrics
+                            # 修复：传递目录名作为experiment_id，与save_model_checkpoint保持一致
+                            experiment_manager.log_training_metrics(
+                                experiment_id=os.path.basename(self.output_dir),  # 使用目录名作为实验ID
+                                metrics={
+                                    "epoch": global_epoch,
+                                    "train_loss": train_loss,
+                                    "val_loss": val_loss,
+                                    "physics_loss": val_physics,
+                                    "learning_rate": history['lr'][-1],
+                                    "physics_weight": physics_weight,
+                                    "stage": stage_name_display
+                                }
+                            )
+                            
+                            # 每100个epoch或阶段结束时保存检查点记录
+                            if global_epoch % 100 == 0 or epoch_in_stage == stage_epochs - 1:
+                                checkpoint_path = os.path.join(self.dirs["checkpoints"], f"checkpoint_epoch_{global_epoch:05d}.pth")
+                                if os.path.exists(checkpoint_path):
+                                    # 使用正确的方法名save_model_checkpoint
+                                    experiment_manager.save_model_checkpoint(
+                                        experiment_id=os.path.basename(self.output_dir),
+                                        model_state={"model_path": checkpoint_path},
+                                        epoch=global_epoch,
+                                        loss=val_loss
+                                    )
+                        except Exception as e:
+                            logger.warning(f"⚠️  记录到实验管理器失败: {e}")
+                    
                     # 早停检查
                     if early_stopping_enabled:
                         if val_loss < best_val_loss - 1e-5:  # 最小改进阈值
@@ -1678,7 +2132,8 @@ class MultiStageTrainer:
                         'optimizer_state_dict': optimizer.state_dict(),
                         'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
                         'history': history,
-                        'normalizer': normalizer.state_dict() if normalizer is not None else None
+                        'normalizer': normalizer[0].state_dict() if isinstance(normalizer, tuple) else (normalizer.state_dict() if normalizer is not None else None),
+                        'output_normalizer': normalizer[1].state_dict() if isinstance(normalizer, tuple) else None
                     }
                     
                     # 添加scaler状态（如果存在）
@@ -2218,11 +2673,54 @@ def progressive_training(
     - 增强物理一致性验证
     - 自适应物理权重调整
     """
+    # 实验管理器初始化
+    logger.info("🔬 初始化实验管理器")
+    # 注意：ExperimentManager只接受base_dir参数
+    experiment_manager = ExperimentManager(
+        base_dir=output_dir
+    )
+    
+    # 保存配置版本
+    config_version_manager = ConfigVersionManager()
+    config_version = config_version_manager.save_config_version(config, "训练配置")
+    
+    # 使用create_experiment方法创建实验并获取实验ID
+    experiment_id, experiment_dir = experiment_manager.create_experiment(
+        config=config,
+        description="EFD-PINNs训练实验"
+    )
+    
+    # 记录实验开始信息
+    experiment_info = {
+        "experiment_id": experiment_id,
+        "config_version": config_version,
+        "start_time": datetime.datetime.now().isoformat(),
+        "device": str(device),
+        "args": {
+            "mode": args.mode,
+            "epochs": args.epochs,
+            "lr": args.lr,
+            "batch_size": args.batch_size,
+            "physics_weight": args.physics_weight,
+            "dynamic_weight": args.dynamic_weight,
+            "weight_strategy": args.weight_strategy
+        }
+    }
+    # 使用log_training_metrics方法记录实验信息
+    experiment_manager.log_training_metrics(experiment_id, experiment_info)
+    
     # 数据准备
     logger.info("📊 准备训练数据")
-    X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_training_data(
-        config, args.num_samples, device, output_dir, args.use_3d_mapping, args.gpu_safe, args.quick_run
-    )
+    use_dynamic_data = config.get("data", {}).get("use_dynamic", False)
+    
+    if use_dynamic_data:
+        logger.info("📊 使用动态数据生成（时空演化）")
+        X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_dynamic_ewod_data(config, device)
+    else:
+        logger.info("📊 使用静态数据生成")
+        X_train, y_train, X_val, y_val, X_test, y_test, physics_points, normalizer = generate_training_data(
+            config, args.num_samples, device, output_dir, args.use_3d_mapping, args.gpu_safe, args.quick_run
+        )
     
     # 如果配置中要求，生成增强物理一致性验证数据
     if config.get('use_enhanced_physics_verification', False):
@@ -2281,8 +2779,25 @@ def progressive_training(
     model, history = trainer.run(
         model, optimizer, scheduler, train_loader, 
         X_val, y_val, X_test, y_test, physics_points, 
-        normalizer, history, performance_monitor, training_tracker
+        normalizer, history, performance_monitor, training_tracker,
+        gradient_accumulation_steps=1, experiment_manager=experiment_manager
     )
+    
+    # 记录训练完成信息到实验管理器
+    logger.info("📊 记录训练结果到实验管理器")
+    
+    # 按报告生成器期望的格式记录训练指标
+    # 记录所有epoch的训练数据
+    for epoch in range(len(history["train_loss"])):
+        metrics = {
+            "epoch": epoch + 1,
+            "train_loss": history["train_loss"][epoch] if epoch < len(history["train_loss"]) else float("inf"),
+            "val_loss": history["val_loss"][epoch] if epoch < len(history["val_loss"]) else float("inf"),
+            "physics_loss": history["physics_loss"][epoch] if epoch < len(history["physics_loss"]) else float("inf"),
+            "learning_rate": history["learning_rate"][epoch] if "learning_rate" in history and epoch < len(history["learning_rate"]) else 0,
+            "physics_weight": history["physics_weight"][epoch] if "physics_weight" in history and epoch < len(history["physics_weight"]) else 0
+        }
+        experiment_manager.log_training_metrics(experiment_id, metrics)
     
     # 生成最终报告
     if training_tracker is not None:
@@ -2295,6 +2810,16 @@ def progressive_training(
     # 最终保存
     final_model_path = os.path.join(output_dir, "final_model.pth")
     save_model(model, normalizer, final_model_path, config, {"epochs_trained": len(history["train_loss"]), "best_val_loss": min(history["val_loss"]) if history["val_loss"] else float("inf")}, export_onnx=args.export_onnx, onnx_path=os.path.join(output_dir, "final_model.onnx"))
+    
+    # 记录模型检查点到实验管理器
+    # 由于模型已经保存到final_model_path，我们这里记录基本信息
+    final_loss = history["val_loss"][-1] if history["val_loss"] else float("inf")
+    experiment_manager.save_model_checkpoint(
+        experiment_id=experiment_id,
+        model_state={"model_path": final_model_path},  # 只传递模型路径作为状态信息
+        epoch=len(history["train_loss"]),
+        loss=final_loss
+    )
 
     # 训练历史 JSON
     history_path = os.path.join(dirs["reports"], "training_history.json")
@@ -2352,6 +2877,10 @@ def progressive_training(
     try:
         import matplotlib
         matplotlib.use("Agg")
+        # 设置英文显示以避免中文警告和乱码
+        matplotlib.rcParams['font.family'] = 'DejaVu Sans'
+        matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+        matplotlib.rcParams['axes.unicode_minus'] = False
         import matplotlib.pyplot as plt
         plt.figure()
         plt.plot(history["train_loss"], label="Train")
@@ -2411,9 +2940,9 @@ def progressive_training(
                 plt.scatter(targets[:, 0], predictions[:, 0], alpha=0.6)
                 plt.plot([targets[:, 0].min(), targets[:, 0].max()], 
                          [targets[:, 0].min(), targets[:, 0].max()], 'r--')
-                plt.xlabel('真实值')
-                plt.ylabel('预测值')
-                plt.title('预测 vs 真实值')
+                plt.xlabel('True Values')
+                plt.ylabel('Predicted Values')
+                plt.title('Prediction vs True Values')
                 plt.grid(True, alpha=0.3)
                 plt.tight_layout()
                 pred_vs_true_path = os.path.join(dirs['visualizations'], 'prediction_vs_true.png')
@@ -2424,13 +2953,13 @@ def progressive_training(
             # 2. 损失分布图
             plt.figure(figsize=(10, 6))
             if 'train_loss' in history and len(history['train_loss']) > 0:
-                plt.hist(history['train_loss'], bins=50, alpha=0.7, label='训练损失')
+                plt.hist(history['train_loss'], bins=50, alpha=0.7, label='Train Loss')
             if 'val_loss' in history and len(history['val_loss']) > 0:
-                plt.hist(history['val_loss'], bins=50, alpha=0.7, label='验证损失')
+                plt.hist(history['val_loss'], bins=50, alpha=0.7, label='Validation Loss')
             plt.xscale('log')
-            plt.xlabel('损失值')
-            plt.ylabel('频率')
-            plt.title('损失分布')
+            plt.xlabel('Loss Value')
+            plt.ylabel('Frequency')
+            plt.title('Loss Distribution')
             plt.legend()
             plt.grid(True, alpha=0.3)
             loss_dist_path = os.path.join(dirs['visualizations'], 'loss_distribution.png')
@@ -2443,9 +2972,9 @@ def progressive_training(
                 plt.figure(figsize=(10, 6))
                 plt.plot(history['lr'])
                 plt.yscale('log')
-                plt.xlabel('训练轮次')
-                plt.ylabel('学习率')
-                plt.title('学习率调度曲线')
+                plt.xlabel('Training Epochs')
+                plt.ylabel('Learning Rate')
+                plt.title('Learning Rate Schedule')
                 plt.grid(True, alpha=0.3)
                 lr_path = os.path.join(dirs['visualizations'], 'learning_rate_schedule.png')
                 plt.savefig(lr_path, dpi=300)
@@ -2456,9 +2985,9 @@ def progressive_training(
             if 'physics_weight' in history and len(history['physics_weight']) > 0:
                 plt.figure(figsize=(10, 6))
                 plt.plot(history['physics_weight'])
-                plt.xlabel('训练轮次')
-                plt.ylabel('物理权重')
-                plt.title('物理损失权重变化')
+                plt.xlabel('Training Epochs')
+                plt.ylabel('Physics Weight')
+                plt.title('Physics Loss Weight History')
                 plt.grid(True, alpha=0.3)
                 weight_path = os.path.join(dirs['visualizations'], 'physics_weight_history.png')
                 plt.savefig(weight_path, dpi=300)
@@ -2467,6 +2996,18 @@ def progressive_training(
                 
         except Exception as e:
             logger.warning(f"⚠️  高级诊断和可视化失败: {e}")
+    
+    # 记录实验完成信息
+    experiment_manager.log_training_metrics(experiment_id, {
+        "end_time": datetime.datetime.now().isoformat(),
+        "final_val_loss": final_val_loss,
+        "final_physics": final_physics,
+        "total_training_time": (datetime.datetime.now() - datetime.datetime.fromisoformat(experiment_info["start_time"])).total_seconds()
+    })
+    
+    # 生成实验总结报告
+    experiment_summary = experiment_manager.get_experiment_info(experiment_id)
+    logger.info(f"📋 实验总结: {experiment_summary}")
     
     logger.info("🎉 训练完成！")
     return model, normalizer, history
@@ -2534,6 +3075,8 @@ def parse_arguments():
     # 检查点管理
     p.add_argument("--clean_old_checkpoints", type=bool, default=False, help="自动清理旧的检查点文件")
     p.add_argument("--max_checkpoints", type=int, default=10, help="保留的最大检查点数量")
+    # 实验ID参数
+    p.add_argument("--experiment-id", help="指定实验ID，用于标识实验")
     return p.parse_args()
 
 # 主入口
@@ -2547,10 +3090,30 @@ def main():
     set_global_seed(args.seed, args.deterministic)
     logger.info(f"🔧 设备: {device}")
 
-    # 输出目录
-    output_dir = make_timestamp_dir(args.output_dir)
+    # 输出目录处理逻辑优化
+    # 检查是否提供了实验ID参数
+    if hasattr(args, 'experiment_id') and args.experiment_id:
+        # 如果提供了实验ID，直接使用该ID作为目录名
+        output_dir = os.path.join(os.path.dirname(args.output_dir), args.experiment_id)
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"📁 使用指定的实验ID目录: {output_dir}")
+    else:
+        # 检查目录是否已经是带时间戳的实验目录格式 (exp_YYYYMMDD_HHMMSS)
+        import re
+        is_timestamp_dir = re.match(r'^exp_\d{8}_\d{6}$', os.path.basename(args.output_dir)) is not None or \
+                          re.match(r'^exp_\d{8}_\d{6}_\d{8}_\d{6}$', os.path.basename(args.output_dir)) is not None
+        
+        # 如果已经是带时间戳的目录格式，直接使用，不再添加时间戳
+        if is_timestamp_dir:
+            output_dir = args.output_dir
+            os.makedirs(output_dir, exist_ok=True)
+            logger.info(f"📁 使用已存在的带时间戳目录: {output_dir}")
+        else:
+            # 否则按照原逻辑添加时间戳
+            output_dir = make_timestamp_dir(args.output_dir)
+            logger.info(f"📁 新建带时间戳目录: {output_dir}")
+    
     dirs = setup_output_dirs(output_dir)
-    logger.info(f"📁 输出目录: {output_dir}")
 
     # 配置
     if not os.path.isfile(args.config):

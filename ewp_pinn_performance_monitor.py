@@ -1,5 +1,11 @@
 import torch
 import numpy as np
+import matplotlib
+# 设置英文显示以避免中文警告和乱码
+matplotlib.use("Agg")
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'
+matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
@@ -73,7 +79,7 @@ class ModelPerformanceMonitor:
             stage_config: 阶段配置参数
         """
         self.current_stage += 1
-        print(f"🔄 开始训练阶段 {self.current_stage}: {stage_name}")
+        print(f"🔄 Starting training stage {self.current_stage}: {stage_name}")
         self.diagnostic_results[f'stage_{self.current_stage}'] = {
             'name': stage_name,
             'config': stage_config,
@@ -88,7 +94,7 @@ class ModelPerformanceMonitor:
         stage_key = f'stage_{self.current_stage}'
         if stage_key in self.diagnostic_results:
             self.diagnostic_results[stage_key]['end_epoch'] = len(self.metrics_history['epoch']) - 1
-            print(f"✅ 完成训练阶段 {self.current_stage}: {self.diagnostic_results[stage_key]['name']}")
+            print(f"✅ Completed training stage {self.current_stage}: {self.diagnostic_results[stage_key]['name']}")
     
     def analyze_convergence(self, patience=10, min_improvement=1e-4):
         """
@@ -336,7 +342,7 @@ class ModelPerformanceMonitor:
         
         # 确保epoch数组存在
         if 'epoch' not in self.metrics_history or len(self.metrics_history['epoch']) == 0:
-            print("⚠️  警告：没有足够的训练数据来绘制曲线图")
+            print("⚠️  Warning: Not enough training data to plot curves")
             plt.close()
             return None
         
@@ -344,45 +350,45 @@ class ModelPerformanceMonitor:
         
         # 损失曲线
         if 'train_loss' in self.metrics_history and len(self.metrics_history['train_loss']) == len(epoch_array):
-            axes[0, 0].plot(epoch_array, self.metrics_history['train_loss'], label='训练损失')
+            axes[0, 0].plot(epoch_array, self.metrics_history['train_loss'], label='Training Loss')
         if 'val_loss' in self.metrics_history and len(self.metrics_history['val_loss']) == len(epoch_array):
-            axes[0, 0].plot(epoch_array, self.metrics_history['val_loss'], label='验证损失')
-        axes[0, 0].set_title('训练与验证损失')
-        axes[0, 0].set_xlabel('轮次')
-        axes[0, 0].set_ylabel('损失值')
+            axes[0, 0].plot(epoch_array, self.metrics_history['val_loss'], label='Validation Loss')
+        axes[0, 0].set_title('Training and Validation Loss')
+        axes[0, 0].set_xlabel('Epoch')
+        axes[0, 0].set_ylabel('Loss Value')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
         
         # MAE曲线
         if 'train_mae' in self.metrics_history and 'val_mae' in self.metrics_history:
             if len(self.metrics_history['train_mae']) == len(epoch_array):
-                axes[0, 1].plot(epoch_array, self.metrics_history['train_mae'], label='训练MAE')
+                axes[0, 1].plot(epoch_array, self.metrics_history['train_mae'], label='Train MAE')
             if len(self.metrics_history['val_mae']) == len(epoch_array):
-                axes[0, 1].plot(epoch_array, self.metrics_history['val_mae'], label='验证MAE')
-            axes[0, 1].set_title('训练与验证MAE')
-            axes[0, 1].set_xlabel('轮次')
-            axes[0, 1].set_ylabel('MAE值')
+                axes[0, 1].plot(epoch_array, self.metrics_history['val_mae'], label='Validation MAE')
+            axes[0, 1].set_title('Training and Validation MAE')
+            axes[0, 1].set_xlabel('Epoch')
+            axes[0, 1].set_ylabel('MAE Value')
             axes[0, 1].legend()
             axes[0, 1].grid(True, alpha=0.3)
         
         # 物理与数据损失
         if 'physics_loss' in self.metrics_history and 'data_loss' in self.metrics_history:
             if len(self.metrics_history['physics_loss']) == len(epoch_array):
-                axes[1, 0].plot(epoch_array, self.metrics_history['physics_loss'], label='物理损失')
+                axes[1, 0].plot(epoch_array, self.metrics_history['physics_loss'], label='Physics Loss')
             if len(self.metrics_history['data_loss']) == len(epoch_array):
-                axes[1, 0].plot(epoch_array, self.metrics_history['data_loss'], label='数据损失')
-            axes[1, 0].set_title('物理约束损失与数据损失')
-            axes[1, 0].set_xlabel('轮次')
-            axes[1, 0].set_ylabel('损失值')
+                axes[1, 0].plot(epoch_array, self.metrics_history['data_loss'], label='Data Loss')
+            axes[1, 0].set_title('Physics Constraint Loss vs Data Loss')
+            axes[1, 0].set_xlabel('Epoch')
+            axes[1, 0].set_ylabel('Loss Value')
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
         
         # 学习率曲线
         if 'learning_rate' in self.metrics_history and len(self.metrics_history['learning_rate']) == len(epoch_array):
-            axes[1, 1].plot(epoch_array, self.metrics_history['learning_rate'], label='学习率')
-            axes[1, 1].set_title('学习率变化')
-            axes[1, 1].set_xlabel('轮次')
-            axes[1, 1].set_ylabel('学习率')
+            axes[1, 1].plot(epoch_array, self.metrics_history['learning_rate'], label='Learning Rate')
+            axes[1, 1].set_title('Learning Rate Schedule')
+            axes[1, 1].set_xlabel('Epoch')
+            axes[1, 1].set_ylabel('Learning Rate')
             axes[1, 1].set_yscale('log')
             axes[1, 1].legend()
             axes[1, 1].grid(True, alpha=0.3)
@@ -393,7 +399,7 @@ class ModelPerformanceMonitor:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_path = os.path.join(self.save_dir, f'training_curves_{timestamp}.png')
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"📊 训练曲线图已保存: {save_path}")
+            print(f"Training curves saved: {save_path}")
             plt.close()
             return save_path
         
@@ -425,10 +431,10 @@ class ModelPerformanceMonitor:
         # 绘制误差分布图
         plt.figure(figsize=(10, 6))
         sns.histplot(errors, kde=True, bins=50)
-        plt.axvline(x=0, color='r', linestyle='--', label='零误差')
-        plt.title('预测误差分布')
-        plt.xlabel('预测误差')
-        plt.ylabel('频率')
+        plt.axvline(x=0, color='r', linestyle='--', label='Zero Error')
+        plt.title('Prediction Error Distribution')
+        plt.xlabel('Prediction Error')
+        plt.ylabel('Frequency')
         plt.grid(True, alpha=0.3)
         plt.legend()
         
@@ -436,7 +442,7 @@ class ModelPerformanceMonitor:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_path = os.path.join(self.save_dir, f'error_distribution_{timestamp}.png')
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"📊 误差分布图已保存: {save_path}")
+            print(f"Error distribution plot saved: {save_path}")
             plt.close()
             return save_path
         
@@ -461,7 +467,7 @@ class ModelPerformanceMonitor:
                 weights = param.data.abs().cpu().numpy()
                 break
         else:
-            print("⚠️  无法找到输入层权重，跳过特征重要性分析")
+            print("Warning: Unable to find input layer weights, skipping feature importance analysis")
             return None
         
         # 计算每个特征的平均权重
@@ -476,22 +482,22 @@ class ModelPerformanceMonitor:
         
         # 特征名称
         if feature_names is None:
-            feature_names = [f'特征_{i}' for i in range(len(feature_importance))]
+            feature_names = [f'Feature_{i}' for i in range(len(feature_importance))]
         top_features = [feature_names[i] for i in top_indices]
         
         # 绘制特征重要性
         plt.figure(figsize=(12, 8))
         plt.barh(range(len(top_features)), top_importance, tick_label=top_features)
         plt.gca().invert_yaxis()  # 最重要的特征在顶部
-        plt.title(f'前{top_n}个重要特征')
-        plt.xlabel('特征重要性（权重绝对值）')
+        plt.title(f'Top {top_n} Important Features')
+        plt.xlabel('Feature Importance (Absolute Weight Value)')
         plt.grid(True, axis='x', alpha=0.3)
         
         if save_fig:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             save_path = os.path.join(self.save_dir, f'feature_importance_{timestamp}.png')
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"📊 特征重要性图已保存: {save_path}")
+            print(f"Feature importance plot saved: {save_path}")
             plt.close()
             return save_path
         
@@ -529,7 +535,7 @@ class ModelPerformanceMonitor:
         with open(report_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
         
-        print(f"📋 性能报告已保存: {report_path}")
+        print(f"Performance report saved: {report_path}")
         
         # 打印关键发现
         self._print_key_findings(report)
@@ -578,37 +584,37 @@ class ModelPerformanceMonitor:
         Args:
             report: 性能报告
         """
-        print("\n🔍 模型性能关键发现:")
-        print(f"📊 总训练轮次: {report['training_summary']['total_epochs']}")
-        print(f"🏆 最佳验证损失: {report['training_summary']['best_val_loss']:.6f}")
-        print(f"📈 最终验证损失: {report['training_summary']['final_val_loss']:.6f}")
+        print("\nKey Model Performance Findings:")
+        print(f"Total training epochs: {report['training_summary']['total_epochs']}")
+        print(f"Best validation loss: {report['training_summary']['best_val_loss']:.6f}")
+        print(f"Final validation loss: {report['training_summary']['final_val_loss']:.6f}")
         
         # 收敛状态
         if 'convergence_analysis' in report:
             conv = report['convergence_analysis']
             if 'status' in conv:
                 status_map = {
-                    'converged': '✅ 已收敛',
-                    'converging': '⏳ 收敛中',
-                    'incomplete': '❓ 无法判断'
+                    'converged': '✅ Converged',
+                    'converging': '⏳ Converging',
+                    'incomplete': '❓ Cannot determine'
                 }
-                print(f"📉 收敛状态: {status_map.get(conv['status'], conv['status'])}")
+                print(f"📉 Convergence status: {status_map.get(conv['status'], conv['status'])}")
         
         # 偏差-方差状态
         if 'bias_variance_analysis' in report:
             bv = report['bias_variance_analysis']
             if 'status' in bv:
-                print(f"⚖️  偏差-方差状态: {bv['status']}")
+                print(f"⚖️  Bias-variance status: {bv['status']}")
         
         # 物理约束效果
         if 'physics_integration_analysis' in report:
             pi = report['physics_integration_analysis']
             if 'effectiveness' in pi:
-                print(f"🔧 物理约束效果: {pi['effectiveness']}")
+                print(f"🔧 Physics constraint effectiveness: {pi['effectiveness']}")
         
         # 建议
         if 'recommendations' in report and report['recommendations']:
-            print("\n💡 改进建议:")
+            print("\n💡 Improvement suggestions:")
             for i, rec in enumerate(report['recommendations'], 1):
                 print(f"   {i}. {rec}")
     
@@ -629,7 +635,7 @@ class ModelPerformanceMonitor:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         export_paths['performance_report'] = os.path.join(self.save_dir, f'performance_report_{timestamp}.json')
         
-        print("\n📤 诊断结果导出完成!")
+        print("\n📤 Diagnostic results export completed!")
         for key, path in export_paths.items():
             if path:
                 print(f"   - {key}: {path}")
@@ -676,11 +682,11 @@ def analyze_checkpoint(checkpoint_path, device='cpu'):
             analysis['optimization_rounds'] = len(checkpoint['hyperparameter_optimization_history'])
             analysis['best_hyperparameters'] = checkpoint['best_hyperparameters']
         
-        print(f"✅ 检查点分析完成: {checkpoint_path}")
+        print(f"✅ Checkpoint analysis completed: {checkpoint_path}")
         return analysis
         
     except Exception as e:
-        print(f"❌ 检查点分析失败: {str(e)}")
+        print(f"❌ Checkpoint analysis failed: {str(e)}")
         return {'error': str(e), 'checkpoint_path': checkpoint_path}
 
 def compare_models(model_paths, device='cpu'):
@@ -707,16 +713,16 @@ def compare_models(model_paths, device='cpu'):
                 'optimization_rounds': analysis.get('optimization_rounds', 0)
             })
         except Exception as e:
-            print(f"❌ 无法分析模型: {path}, 错误: {str(e)}")
+            print(f"❌ Unable to analyze model: {path}, error: {str(e)}")
     
     # 按最佳验证损失排序
     comparisons.sort(key=lambda x: x['best_val_loss'])
     
-    print("\n🏆 模型性能比较:")
+    print("\n🏆 Model performance comparison:")
     for i, model in enumerate(comparisons, 1):
-        print(f"   {i}. 模型: {os.path.basename(model['model_path'])}")
-        print(f"      最佳验证损失: {model['best_val_loss']:.6f}")
-        print(f"      训练轮次: {model['training_epochs']}")
-        print(f"      超参数优化: {'✅ 是' if model['has_hyperopt'] else '❌ 否'} ({model['optimization_rounds']}轮)")
+        print(f"   {i}. Model: {os.path.basename(model['model_path'])}")
+        print(f"      Best validation loss: {model['best_val_loss']:.6f}")
+        print(f"      Training epochs: {model['training_epochs']}")
+        print(f"      Hyperparameter optimization: {'✅ Yes' if model['has_hyperopt'] else '❌ No'} ({model['optimization_rounds']} rounds)")
     
     return comparisons

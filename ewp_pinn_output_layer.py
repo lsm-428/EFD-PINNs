@@ -27,11 +27,11 @@ class EWPINNOutputLayer:
         # 特征名称列表
         self.feature_names = self._init_feature_names()
         
-        # 基础物理常数
+        # 基础物理常数 - 基于真实器件 (2025-11-29 修正)
         self.epsilon_0 = 8.854e-12  # 真空介电常数
-        self.epsilon_r = 2.0        # 相对介电常数（默认值）
-        self.gamma = 0.05           # 表面张力（默认值，单位N/m）
-        self.d = 1e-6               # 介电层厚度（默认值，单位m）
+        self.epsilon_r = 4.0        # SU-8相对介电常数 (修正)
+        self.gamma = 0.072          # 油-水界面张力 (N/m) (修正)
+        self.d = 0.4e-6             # 介电层厚度 (m) (修正)
         
         print(f"EWPINN输出层已初始化 - 支持{self.total_features}维输出")
     

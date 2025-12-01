@@ -89,6 +89,17 @@ class TrainingTracker:
         if phase in self.performance:
             self.performance[phase].append(batch_time)
     
+    def log_training_metrics(self, epoch, train_loss, val_loss, physics_loss, learning_rate, physics_weight=None, gradient_accumulation_steps=None):
+        """记录训练指标（兼容性方法）"""
+        # 构建与log_epoch_metrics兼容的格式
+        train_metrics = {'loss': train_loss}
+        val_metrics = {'loss': val_loss, 'physics': physics_loss}
+        
+        # 使用当前阶段（如果可用），否则使用默认阶段
+        stage = getattr(self, 'current_stage', 'default')
+        
+        return self.log_epoch_metrics(epoch, stage, train_metrics, val_metrics, learning_rate)
+    
     def log_epoch_metrics(self, epoch, stage, train_metrics, val_metrics, lr):
         """记录并保存epoch指标"""
         # 添加到全局指标
