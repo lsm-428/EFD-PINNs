@@ -1,0 +1,173 @@
+{
+  "metadata": {
+    "stage": "8_residual_learning",
+    "version": "8.0",
+    "created_at": "2025-12-02",
+    "description": "阶段8：残差学习，添加理论预测特征",
+    "goal": "动态响应与理论曲线精确匹配",
+    "improvements": [
+      "添加理论预测角度作为输入特征",
+      "让模型学习修正理论预测",
+      "增加样本数到25000",
+      "增加训练轮次到4000"
+    ],
+    "success_criteria": {
+      "dynamic_error": "<5°",
+      "response_time_t90": "<30ms",
+      "overshoot": "<15%"
+    }
+  },
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_dims": [256, 256, 128, 64],
+    "hidden_layers": [256, 256, 128, 64],
+    "activation": "gelu",
+    "use_batch_norm": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "模型": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "隐藏层维度": [256, 256, 128, 64],
+    "激活函数": "gelu",
+    "批量归一化": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "training": {
+    "epochs": 4000,
+    "batch_size": 64,
+    "optimizer": "adam",
+    "learning_rate": 0.0003,
+    "weight_decay": 1e-05,
+    "lr_scheduler": "cosine",
+    "warmup_epochs": 150,
+    "min_lr": 1e-07,
+    "early_stopping_patience": 600,
+    "gradient_clipping": 1.0,
+    "mixed_precision": true
+  },
+  "训练流程": {
+    "阶段1": {
+      "name": "残差学习",
+      "epochs": 4000,
+      "lr": 0.0003,
+      "physics_weight": 0.1,
+      "warmup_epochs": 150
+    }
+  },
+  "physics": {
+    "physics_weight": 0.1,
+    "num_physics_points": 500,
+    "adaptive_physics_weight": false,
+    "residual_weights": {
+      "young_lippmann": 5.0,
+      "contact_angle_constraint": 3.0,
+      "contact_line_dynamics": 2.0,
+      "interface_stability": 3.0,
+      "volume_conservation": 2.0,
+      "interface_curvature": 1.0,
+      "surface_tension": 1.0,
+      "continuity": 0.3,
+      "momentum_u": 0.3,
+      "momentum_v": 0.3,
+      "momentum_w": 0.3,
+      "two_phase_continuity": 0.05,
+      "two_phase_momentum_u": 0.05,
+      "two_phase_momentum_v": 0.05,
+      "two_phase_momentum_w": 0.05,
+      "dielectric_charge": 0.1,
+      "thermodynamic": 0.05,
+      "frequency_response": 0.3,
+      "optical_properties": 0.01,
+      "energy_efficiency": 0.01,
+      "volume_consistency": 0.1,
+      "ink_potential_min": 0.0,
+      "ink_energy_balance": 0.05,
+      "data_fit": 1.0
+    }
+  },
+  "materials": {
+    "epsilon_r": 4.0,
+    "gamma": 0.072,
+    "dielectric_thickness": 4e-07,
+    "theta0": 120.0,
+    "theta_wall": 70.0,
+    "wall_influence_threshold": 0.6
+  },
+  "geometry": {
+    "Lx": 0.000184,
+    "Ly": 0.000184,
+    "Lz": 2.0855e-05
+  },
+  "data": {
+    "use_dynamic": true,
+    "num_samples": 25000,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "normalization": "standard",
+    "augmentation": false,
+    "noise_level": 0.0,
+    "spatial_resolution": [10, 10, 5],
+    "temporal_resolution": 150,
+    "time_range": [0, 0.02],
+    "voltage_range": [0, 30],
+    "voltage_sequence": "square_wave",
+    "dynamics_params": {
+      "tau": 0.003,
+      "zeta": 0.7
+    },
+    "use_physics": true
+  },
+  "数据": {
+    "样本数量": 25000,
+    "批次大小": 64,
+    "训练比例": 0.7,
+    "验证比例": 0.15,
+    "测试比例": 0.15,
+    "use_physics": true
+  },
+  "优化器": {
+    "type": "adam",
+    "weight_decay": 1e-05,
+    "beta1": 0.9,
+    "beta2": 0.999
+  },
+  "学习率调度器": {
+    "type": "cosine",
+    "patience": 10,
+    "factor": 0.5
+  },
+  "loss": {
+    "loss_type": "mse",
+    "weight_strategy": "fixed",
+    "early_stopping_patience": 600,
+    "early_stopping_min_delta": 1e-6
+  },
+  "validation": {
+    "interval": 20,
+    "metrics": ["response_time_t90", "overshoot", "settling_time", "angle_error"],
+    "save_best": true,
+    "save_all_checkpoints": false
+  },
+  "monitoring": {
+    "track_physics_residuals": true,
+    "track_gradient_norms": true,
+    "track_weight_distributions": false,
+    "generate_diagnostic_plots": true,
+    "diagnostic_interval": 100
+  },
+  "output": {
+    "dir": "./outputs_stage8",
+    "save_checkpoints": true,
+    "checkpoint_interval": 100,
+    "save_visualizations": true,
+    "save_diagnostics": true
+  },
+  "normalization": "standard",
+  "seed": 42,
+  "deterministic": true
+}

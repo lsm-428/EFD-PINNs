@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "stage": "1_initial",
+    "version": "1.0",
+    "description": "阶段1：初始训练配置",
+    "goal": "基础模型训练"
+  },
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_dims": [256, 256, 128, 64],
+    "hidden_layers": [256, 256, 128, 64],
+    "activation": "gelu",
+    "use_batch_norm": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "模型": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "隐藏层维度": [256, 256, 128, 64],
+    "激活函数": "gelu",
+    "批量归一化": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "training": {
+    "epochs": 2000,
+    "batch_size": 64,
+    "optimizer": "adam",
+    "learning_rate": 0.0003,
+    "weight_decay": 1e-05,
+    "lr_scheduler": "cosine",
+    "warmup_epochs": 100,
+    "min_lr": 1e-07,
+    "early_stopping_patience": 300,
+    "gradient_clipping": 1.0,
+    "mixed_precision": true
+  },
+  "训练流程": {
+    "阶段1": {
+      "name": "预训练阶段",
+      "epochs": 500,
+      "lr": 0.001,
+      "physics_weight": 0.05,
+      "warmup_epochs": 50
+    },
+    "阶段2": {
+      "name": "物理增强阶段",
+      "epochs": 500,
+      "lr": 0.0005,
+      "physics_weight": 0.1
+    },
+    "阶段3": {
+      "name": "微调阶段",
+      "epochs": 500,
+      "lr": 0.0001,
+      "physics_weight": 0.15
+    },
+    "阶段4": {
+      "name": "最终收敛阶段",
+      "epochs": 500,
+      "lr": 0.00003,
+      "physics_weight": 0.2
+    }
+  },
+  "physics": {
+    "physics_weight": 0.1,
+    "num_physics_points": 500,
+    "adaptive_physics_weight": false,
+    "residual_weights": {
+      "young_lippmann": 5.0,
+      "contact_angle_constraint": 3.0,
+      "contact_line_dynamics": 3.0,
+      "interface_stability": 3.0,
+      "volume_conservation": 2.0,
+      "interface_curvature": 1.0,
+      "surface_tension": 1.0,
+      "continuity": 0.3,
+      "momentum_u": 0.3,
+      "momentum_v": 0.3,
+      "momentum_w": 0.3,
+      "two_phase_continuity": 0.1,
+      "data_fit": 1.0
+    }
+  },
+  "materials": {
+    "epsilon_r": 4.0,
+    "gamma": 0.072,
+    "dielectric_thickness": 4e-07,
+    "theta0": 120.0,
+    "theta_wall": 70.0,
+    "wall_influence_threshold": 0.6
+  },
+  "geometry": {
+    "Lx": 0.000184,
+    "Ly": 0.000184,
+    "Lz": 2.0855e-05
+  },
+  "data": {
+    "use_dynamic": true,
+    "num_samples": 10000,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "normalization": "standard",
+    "augmentation": false,
+    "noise_level": 0.0,
+    "spatial_resolution": [10, 10, 5],
+    "temporal_resolution": 100,
+    "time_range": [0, 0.02],
+    "voltage_range": [0, 30],
+    "voltage_sequence": "square_wave",
+    "dynamics_params": {
+      "tau": 0.003,
+      "zeta": 0.7
+    },
+    "use_physics": true
+  },
+  "数据": {
+    "样本数量": 10000,
+    "批次大小": 64,
+    "训练比例": 0.7,
+    "验证比例": 0.15,
+    "测试比例": 0.15,
+    "use_physics": true
+  },
+  "优化器": {
+    "type": "adam",
+    "weight_decay": 1e-05,
+    "beta1": 0.9,
+    "beta2": 0.999
+  },
+  "学习率调度器": {
+    "type": "cosine",
+    "patience": 10,
+    "factor": 0.5
+  },
+  "loss": {
+    "loss_type": "mse",
+    "weight_strategy": "adaptive",
+    "early_stopping_patience": 300,
+    "early_stopping_min_delta": 1e-5
+  },
+  "长时间训练配置": {
+    "早停机制": {
+      "启用": true
+    }
+  },
+  "data_augmentation": {
+    "enabled": false,
+    "noise_level": 0.01,
+    "random_scaling": false
+  },
+  "validation": {
+    "interval": 20,
+    "metrics": ["response_time_t90", "overshoot", "settling_time", "angle_error"],
+    "save_best": true
+  },
+  "output": {
+    "dir": "./outputs_stage1",
+    "save_checkpoints": true,
+    "checkpoint_interval": 50
+  },
+  "normalization": "standard",
+  "seed": 42,
+  "deterministic": true
+}

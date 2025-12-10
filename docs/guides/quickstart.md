@@ -1,6 +1,6 @@
 # EFD-PINNs 快速开始指南
 
-**最后更新**: 2025-12-01
+**最后更新**: 2025-12-10
 
 ## 🚀 快速上手
 
@@ -14,197 +14,197 @@ conda activate efd
 python -c "import torch; print(f'PyTorch: {torch.__version__}')"
 ```
 
-### 2. 基础训练
+### 2. Stage 1: 开口率预测（已校准）
 
-```bash
-# 激活conda环境
-conda activate efd
+```python
+from src.models.aperture_model import EnhancedApertureModel
 
-# 运行训练 (使用当前配置)
-python efd_pinns_train.py --mode train --config config_stage2_10k.json --epochs 200
+# 初始化模型（使用校准后的配置）
+model = EnhancedApertureModel(config_path='config/stage6_wall_effect.json')
+
+# 预测开口率
+for V in [0, 10, 20, 30]:
+    theta = model.get_contact_angle(V)
+    eta = model.contact_angle_to_aperture_ratio(theta)
+    print(f"V={V}V: θ={theta:.1f}°, η={eta*100:.1f}%")
+
+# 输出:
+# V=0V: θ=120.0°, η=0.0%
+# V=10V: θ=119.2°, η=10.3%
+# V=20V: θ=115.2°, η=66.7%  ← 实验值 67%
+# V=30V: θ=108.2°, η=84.4%
 ```
 
-**预期输出：**
-- 训练进度显示
-- 损失曲线实时更新
-- 最终模型保存到 `outputs_*/final_model.pth`
+### 3. Stage 1: 接触角动态响应
 
-### 3. 分析结果
+```python
+from src.predictors import HybridPredictor
+
+# 初始化预测器
+predictor = HybridPredictor(config_path='config/stage6_wall_effect.json')
+
+# 单点预测
+theta = predictor.predict(voltage=20, time=0.01)
+print(f"20V, 10ms 时接触角: {theta:.1f}°")
+
+# 阶跃响应
+t, theta = predictor.step_response(V_start=0, V_end=20, duration=0.02)
+```
+
+### 4. Stage 2: PINN φ 场预测
+
+```python
+from src.predictors.pinn_aperture import PINNAperturePredictor
+
+# 初始化预测器（自动加载最新模型）
+predictor = PINNAperturePredictor()
+
+# 预测开口率
+eta = predictor.predict(voltage=20, time=0.02)
+print(f"PINN 开口率: {eta:.3f}")  # ~0.736
+```
+
+### 5. 训练模型
 
 ```bash
-# 动态响应分析
-python analyze_dynamic_response.py --model outputs_*/final_model.pth --output outputs_*/
+# Stage 1: 接触角训练
+python train_contact_angle.py --quick-run
 
-# 参数验证
-python verify_parameters.py
+# Stage 2: 两相流 PINN 训练
+python train_two_phase.py --epochs 10000
+
+# 物理验证
+python validate_pinn_physics.py
+```
+
+### 6. 运行测试
+
+```bash
+# 运行所有测试
+python -m pytest tests/ -v
 ```
 
 ## 📋 完整工作流程
 
-### 步骤1：配置训练参数
-
-创建自定义配置文件 `my_config.json`：
-
-```json
-{
-  "模型": {
-    "输入维度": 62,
-    "输出维度": 24,
-    "隐藏层": [256, 128, 64],
-    "激活函数": "ReLU",
-    "批标准化": true,
-    "Dropout率": 0.1
-  },
-  "训练": {
-    "渐进式训练": [
-      {
-        "轮次": 1000,
-        "学习率": 0.001,
-        "批次大小": 32,
-        "物理约束权重": 0.1
-      }
-    ]
-  }
-}
-```
-
-### 步骤2：执行训练
+### 步骤1：验证 Stage 1 校准
 
 ```bash
-# 基础训练
-python efd_pinns_train.py --mode train --config my_config.json --output-dir my_results
-
-# 高效架构训练（推荐）
-python efd_pinns_train.py --mode train --config my_config.json --efficient-architecture --model-compression 0.8 --output-dir my_results
-
-# 长时训练
-python efd_pinns_train.py --mode train --config config/long_run_config.json --epochs 100000 --dynamic-weight --output-dir results_long
+# 验证 20V 开口率
+python -c "
+from src.models.aperture_model import EnhancedApertureModel
+model = EnhancedApertureModel(config_path='config/stage6_wall_effect.json')
+theta = model.get_contact_angle(20)
+eta = model.contact_angle_to_aperture_ratio(theta)
+print(f'20V: θ={theta:.1f}°, η={eta*100:.1f}% (实验值: 67%)')
+"
 ```
 
-### 步骤3：监控训练进度
+### 步骤2：Stage 2 训练
 
 ```bash
-# 实时监控训练进度
-python monitor_training.py --log-dir my_results/logs/
+# 快速测试
+python train_two_phase.py --epochs 1000
 
-# 绘制训练历史
-python scripts/plot_training_history.py my_results/training_history.json
+# 完整训练
+python train_two_phase.py --epochs 10000
 ```
 
-### 步骤4：结果分析
+### 步骤3：物理验证
 
-训练完成后，检查以下文件：
+```bash
+# 验证 PINN 物理合理性
+python validate_pinn_physics.py
+```
 
-- `my_results/final_model.pth` - 训练好的模型
-- `my_results/training_history.json` - 训练历史数据
-- `my_results/visualizations/` - 可视化图表
-- `my_results/reports/` - 性能报告
+### 步骤4：可视化结果
+
+```bash
+# 可视化 PINN 结果
+python visualize_pinn_results.py
+```
 
 ## 🔧 常用命令速查
 
 ### 训练相关
 ```bash
-# 从检查点恢复训练
-python efd_pinns_train.py --mode train --config my_config.json --resume --output-dir my_results
+# Stage 1 多阶段训练
+python train_contact_angle.py --multi-stage --epochs 10000
 
-# 启用混合精度训练
-python efd_pinns_train.py --mode train --config my_config.json --mixed-precision --output-dir my_results
-
-# 指定GPU设备
-python efd_pinns_train.py --mode train --config my_config.json --device cuda:0 --output-dir my_results
+# Stage 2 完整训练
+python train_two_phase.py --epochs 10000
 ```
 
-### 测试与推理
+### 测试与验证
 ```bash
-# 批量测试
-python efd_pinns_train.py --mode test --model-path my_results/final_model.pth --config my_config.json
+# 运行所有测试
+python -m pytest tests/ -v
 
-# 单样本推理
-python efd_pinns_train.py --mode infer --model-path my_results/final_model.pth --input-data sample_input.json
-
-# 导出ONNX模型
-python efd_pinns_train.py --mode train --config my_config.json --export-onnx --output-dir my_results
+# 物理验证
+python validate_pinn_physics.py
 ```
 
-### 性能优化
-```bash
-# 使用高效架构（推荐）
-python efd_pinns_train.py --mode train --efficient-architecture --model-compression 0.8
+## 📊 预期结果
 
-# 启用梯度检查点（内存优化）
-python efd_pinns_train.py --mode train --gradient-checkpointing
+### Stage 1 开口率（已校准）
 
-# 数据增强
-python efd_pinns_train.py --mode train --data-augmentation
-```
+| 电压 | 接触角 | 开口率 | 实验值 |
+|------|--------|--------|--------|
+| 0V | 120.0° | 0% | 0% |
+| 20V | 115.2° | 66.7% | **67%** ✓ |
+| 30V | 108.2° | 84.4% | - |
 
-## 🎯 场景化配置
+### Stage 2 PINN（t=20ms）
 
-### 直流阶跃场景
-```bash
-python efd_pinns_train.py --mode train --config config/dc_step_config.json --output-dir results_dc
-```
-
-### 交流频扫场景
-```bash
-python efd_pinns_train.py --mode train --config config/ac_sweep_config.json --output-dir results_ac
-```
-
-### 接触线滞后场景
-```bash
-python efd_pinns_train.py --mode train --config config/contact_line_config.json --output-dir results_cl
-```
+| 电压 | Stage 1 η | PINN η | 误差 |
+|------|-----------|--------|------|
+| 0V | 0% | 0% | 0% |
+| 20V | 66.7% | 73.6% | +6.9% |
+| 30V | 84.4% | 84.6% | +0.2% |
 
 ## 🚨 故障排除
 
 ### 常见问题
 
-**问题1：CUDA内存不足**
+**问题1：模块导入失败**
 ```bash
-# 解决方案：降低批次大小或启用模型压缩
-python efd_pinns_train.py --mode train --batch-size 16 --model-compression 0.7
+# 确保在正确的环境
+conda activate efd
 ```
 
-**问题2：训练不稳定（NaN损失）**
-```bash
-# 解决方案：启用数值稳定化
-python efd_pinns_train.py --mode train --safe-training --gradient-clip 1.0
+**问题2：开口率预测不准确**
+```python
+# 确保使用校准后的配置
+from src.models.aperture_model import EnhancedApertureModel
+model = EnhancedApertureModel(config_path='config/stage6_wall_effect.json')
+
+# 检查参数
+print(f"k = {model.aperture_k}")  # 应为 0.8
+print(f"theta_scale = {model.aperture_theta_scale}")  # 应为 6.0
 ```
 
-**问题3：依赖冲突**
-```bash
-# 解决方案：创建干净的虚拟环境
-python -m venv clean-env
-source clean-env/bin/activate
-pip install -r requirements.txt
+**问题3：PINN 模型不可用**
+```python
+# 检查模型是否存在
+from src.predictors.pinn_aperture import PINNAperturePredictor
+predictor = PINNAperturePredictor()
+print(f"模型可用: {predictor.is_available}")
 ```
 
-### 性能优化建议
-
-1. **GPU训练**：优先使用CUDA设备加速训练
-2. **混合精度**：启用混合精度减少内存占用
-3. **高效架构**：使用残差连接和注意力机制
-4. **模型压缩**：适当压缩模型大小保持性能
-5. **数据预处理**：确保输入数据正确归一化
-
-## 📊 结果解读
-
-训练完成后，重点关注以下指标：
-
-- **训练损失**：应平稳下降并收敛
-- **验证损失**：应与训练损失趋势一致
-- **物理约束残差**：各物理方程的残差应逐渐减小
-- **训练时间**：记录训练耗时用于性能评估
+**问题4：CUDA内存不足**
+```bash
+# 降低批次大小
+python train_two_phase.py --epochs 5000
+```
 
 ## 🎉 下一步
 
 完成基础训练后，您可以：
 
-1. **探索高级功能**：查看[API文档](../api/)了解详细接口
-2. **定制模型架构**：参考[架构说明](../architecture/model_architecture.md)
-3. **优化训练策略**：学习[训练策略指南](./training_strategies.md)
-4. **部署应用**：使用[部署优化指南](./deployment_optimization.md)
+1. **查看详细使用指南**: [../../USAGE_GUIDE.md](../../USAGE_GUIDE.md)
+2. **了解项目架构**: [../specs/MODULE_OVERVIEW.md](../specs/MODULE_OVERVIEW.md)
+3. **查看训练策略**: [training_strategies.md](training_strategies.md)
+4. **查看器件规格**: [../specs/DEVICE_SPECS.md](../specs/DEVICE_SPECS.md)
 
 ---
 
-**需要帮助？** 查看[故障排除指南](./troubleshooting_debugging.md)或提交Issue。
+**需要帮助？** 查看[故障排除指南](troubleshooting_debugging.md)

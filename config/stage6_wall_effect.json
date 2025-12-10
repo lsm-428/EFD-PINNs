@@ -1,0 +1,171 @@
+{
+  "metadata": {
+    "stage": "6_wall_effect",
+    "version": "6.0",
+    "created_at": "2025-12-01",
+    "description": "阶段6：像素墙效应 - 稳态最佳模型",
+    "goal": "加入像素墙接触角效应，提高稳态精度",
+    "improvements": [
+      "加入像素墙接触角 θ_wall=70°",
+      "修复配置文件参数读取",
+      "修复早停耐心值设置",
+      "增加样本数到 15000"
+    ],
+    "success_criteria": {
+      "angle_change": ">30°",
+      "overshoot": "<15%",
+      "response_time_t90": "<30ms"
+    }
+  },
+  "model": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "hidden_dims": [256, 256, 128, 64],
+    "hidden_layers": [256, 256, 128, 64],
+    "activation": "gelu",
+    "use_batch_norm": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "模型": {
+    "input_dim": 62,
+    "output_dim": 24,
+    "隐藏层维度": [256, 256, 128, 64],
+    "激活函数": "gelu",
+    "批量归一化": true,
+    "use_residual": true,
+    "dropout": 0.03
+  },
+  "training": {
+    "epochs": 3000,
+    "batch_size": 64,
+    "optimizer": "adam",
+    "learning_rate": 0.0003,
+    "weight_decay": 1e-05,
+    "lr_scheduler": "cosine",
+    "warmup_epochs": 100,
+    "min_lr": 1e-07,
+    "early_stopping_patience": 500,
+    "gradient_clipping": 1.0,
+    "mixed_precision": true
+  },
+  "训练流程": {
+    "阶段1": {
+      "name": "像素墙效应训练",
+      "epochs": 3000,
+      "lr": 0.0003,
+      "physics_weight": 0.1,
+      "warmup_epochs": 100
+    }
+  },
+  "physics": {
+    "physics_weight": 0.1,
+    "num_physics_points": 500,
+    "adaptive_physics_weight": false,
+    "residual_weights": {
+      "young_lippmann": 5.0,
+      "contact_angle_constraint": 3.0,
+      "contact_line_dynamics": 3.0,
+      "interface_stability": 3.0,
+      "volume_conservation": 2.0,
+      "interface_curvature": 1.0,
+      "surface_tension": 1.0,
+      "continuity": 0.3,
+      "momentum_u": 0.3,
+      "momentum_v": 0.3,
+      "momentum_w": 0.3,
+      "two_phase_continuity": 0.1,
+      "data_fit": 1.0
+    }
+  },
+  "materials": {
+    "epsilon_r": 12.0,
+    "epsilon_hydrophobic": 1.9,
+    "gamma": 0.015,
+    "dielectric_thickness": 4e-07,
+    "hydrophobic_thickness": 4e-07,
+    "V_threshold": 3.0,
+    "_comment_materials": "有效介电常数ε=12(考虑极性液体渗透), γ=15mN/m(乙二醇混合液), 使20V时Δθ≈21°",
+    "theta0": 120.0,
+    "theta_wall": 71.0,
+    "wall_influence_threshold": 0.6,
+    "_comment_wall": "极性液体环境中:油墨亲疏水层(底部Teflon),不亲像素墙(亲水),油墨贴底收缩,20V以上翻墙"
+  },
+  "aperture_mapping": {
+    "k": 1.0,
+    "theta_scale": 30.0,
+    "alpha": 0.02,
+    "aperture_max": 0.85,
+    "_comment": "开口率映射: η = η_max × tanh(k × Δθ / θ_scale), 基于物理合理的接触角变化(20V时Δθ≈21°→η≈60%)"
+  },
+  "physics_mechanism": {
+    "_1_electrowetting": "电润湿作用在极性液体上，使其润湿疏水层(Teflon)",
+    "_2_spreading": "极性液体铺展，将油墨从像素中心挤向边缘/角落",
+    "_3_ink_behavior": "油墨亲疏水层(底部)，不亲围堰壁，贴底收缩形成液滴",
+    "_4_aperture": "开口率 = 极性液体覆盖的透明区域面积 / 像素面积",
+    "_5_overflow": "20V以上油墨被挤压到极限可能翻墙"
+  },
+  "geometry": {
+    "Lx": 0.000174,
+    "Ly": 0.000174,
+    "Lz": 2e-05,
+    "pixel_size": 0.000174,
+    "ink_thickness": 3e-06,
+    "wall_height": 3.5e-06,
+    "_comment_geometry": "像素内沿174μm, 油墨3-3.5μm, 围堰3.5μm(模型用20μm防翻墙)"
+  },
+  "data": {
+    "use_dynamic": true,
+    "num_samples": 15000,
+    "train_ratio": 0.7,
+    "val_ratio": 0.15,
+    "test_ratio": 0.15,
+    "normalization": "standard",
+    "augmentation": false,
+    "noise_level": 0.0,
+    "spatial_resolution": [10, 10, 5],
+    "temporal_resolution": 100,
+    "time_range": [0, 0.02],
+    "voltage_range": [0, 30],
+    "voltage_sequence": "square_wave",
+    "dynamics_params": {
+      "tau": 0.005,
+      "zeta": 0.8
+    },
+    "use_physics": true
+  },
+  "数据": {
+    "样本数量": 15000,
+    "批次大小": 64,
+    "训练比例": 0.7,
+    "验证比例": 0.15,
+    "测试比例": 0.15,
+    "use_physics": true
+  },
+  "优化器": {
+    "type": "adam",
+    "weight_decay": 1e-05
+  },
+  "学习率调度器": {
+    "type": "cosine"
+  },
+  "loss": {
+    "loss_type": "mse",
+    "weight_strategy": "fixed",
+    "early_stopping_patience": 500,
+    "early_stopping_min_delta": 1e-6
+  },
+  "validation": {
+    "interval": 20,
+    "metrics": ["response_time_t90", "overshoot", "settling_time", "angle_error"],
+    "save_best": true
+  },
+  "output": {
+    "dir": "./outputs_stage6",
+    "save_checkpoints": true,
+    "checkpoint_interval": 100
+  },
+  "normalization": "standard",
+  "seed": 42,
+  "deterministic": true
+}

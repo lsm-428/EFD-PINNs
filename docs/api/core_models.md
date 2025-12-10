@@ -1,199 +1,284 @@
 # 核心模型 API
 
-## EfficientEWPINN 类
+**最后更新**: 2025-12-10
 
-**文件**: `ewp_pinn_optimized_architecture.py`
+## EnhancedApertureModel 类
+
+**文件**: `src/models/aperture_model.py`
+
+增强版开口率模型，已校准参数与实验数据一致。
 
 ### 类定义
 ```python
-class EfficientEWPINN(nn.Module):
-    """高效EWPINN模型 - 增强型神经网络架构"""
+class EnhancedApertureModel(ApertureModel):
+    """增强版开口率模型（已校准）"""
 ```
 
 ### 构造函数
 ```python
-def __init__(self, input_dim=62, output_dim=24, hidden_layers=None, 
-             dropout_rate=0.1, activation='ReLU', batch_norm=True, 
-             use_residual=True, use_attention=True, config_path=None, 
-             device='cpu', compression_factor=1.0, gradient_checkpointing=False):
+def __init__(
+    self,
+    config_path: str = 'config/stage6_wall_effect.json',
+    predictor: Optional['HybridPredictor'] = None,
+    tau_rc: float = 0.1e-3
+):
 ```
 
-**参数说明**:
-- `input_dim` (int, 默认62): 输入特征维度
-- `output_dim` (int, 默认24): 输出预测维度  
-- `hidden_layers` (list, 可选): 隐藏层配置列表，如 `[256, 128, 64]`
-- `dropout_rate` (float, 默认0.1): Dropout比率
-- `activation` (str, 默认'ReLU'): 激活函数类型，支持 'ReLU', 'GELU', 'SiLU'
-- `batch_norm` (bool, 默认True): 是否使用批量归一化
-- `use_residual` (bool, 默认True): 是否使用残差连接
-- `use_attention` (bool, 默认True): 是否使用注意力机制
-- `config_path` (str, 可选): 配置文件路径
-- `device` (str, 默认'cpu'): 运行设备
-- `compression_factor` (float, 默认1.0): 网络压缩因子
-- `gradient_checkpointing` (bool, 默认False): 梯度检查点
+**参数**:
+- `config_path`: 配置文件路径（推荐使用校准后的配置）
+- `predictor`: HybridPredictor 实例（可选）
+- `tau_rc`: 电容器充电时间常数
+
+### 主要方法
+
+#### get_contact_angle
+```python
+def get_contact_angle(
+    self, 
+    voltage: float, 
+    time: float = None,
+    V_initial: float = 0.0,
+    t_step: float = 0.0
+) -> float:
+    """获取接触角"""
+```
+
+#### contact_angle_to_aperture_ratio
+```python
+def contact_angle_to_aperture_ratio(self, theta: float) -> float:
+    """接触角 → 开口率（已校准）"""
+```
+
+### 使用示例
+```python
+from src.models.aperture_model import EnhancedApertureModel
+
+# 使用校准后的配置
+model = EnhancedApertureModel(config_path='config/stage6_wall_effect.json')
+
+# 预测开口率
+for V in [0, 10, 20, 30]:
+    theta = model.get_contact_angle(V)
+    eta = model.contact_angle_to_aperture_ratio(theta)
+    print(f"V={V}V: θ={theta:.1f}°, η={eta*100:.1f}%")
+
+# 输出:
+# V=0V: θ=120.0°, η=0.0%
+# V=10V: θ=119.2°, η=10.3%
+# V=20V: θ=115.2°, η=66.7%  ← 实验值 67%
+# V=30V: θ=108.2°, η=84.4%
+```
+
+---
+
+## TwoPhasePINN 类
+
+**文件**: `src/models/pinn_two_phase.py`
+
+两相流物理信息神经网络，用于预测电润湿显示中的体积分数场。
+
+### 类定义
+```python
+class TwoPhasePINN(nn.Module):
+    """两相流 PINN 模型"""
+```
+
+### 构造函数
+```python
+def __init__(self, config: Dict[str, Any] = None):
+```
+
+**参数**:
+- `config`: 配置字典，包含网络结构和物理参数
 
 ### 主要方法
 
 #### forward
 ```python
-def forward(self, x):
-    """前向传播"""
+def forward(self, x: torch.Tensor) -> torch.Tensor:
+    """
+    前向传播
+    
+    Args:
+        x: (batch, 5) - (x, y, z, t, V)
+    
+    Returns:
+        (batch, 5) - (u, v, w, p, phi)
+    """
 ```
 
-**参数**:
-- `x` (torch.Tensor): 输入张量，形状为 `(batch_size, input_dim)`
-
-**返回值**:
-- `torch.Tensor`: 预测结果，形状为 `(batch_size, output_dim)`
-
-#### save_model
+### 使用示例
 ```python
-def save_model(self, filepath):
-    """保存模型和配置"""
+from src.models.pinn_two_phase import TwoPhasePINN
+
+model = TwoPhasePINN()
+inputs = torch.randn(100, 5)  # (x, y, z, t, V)
+outputs = model(inputs)  # (u, v, w, p, phi)
 ```
 
-**参数**:
-- `filepath` (str): 保存路径
+---
 
-#### load_model
-```python
-def load_model(self, filepath):
-    """加载模型和配置"""
-```
+## HybridPredictor 类
 
-**参数**:
-- `filepath` (str): 模型文件路径
+**文件**: `src/predictors/hybrid_predictor.py`
 
-## OptimizedEWPINN 类
-
-**文件**: `efd_pinns_train.py`
+混合预测器，结合解析公式预测接触角动态响应。
 
 ### 类定义
 ```python
-class OptimizedEWPINN(nn.Module):
-    """优化版EWPINN模型 - 简化架构"""
+class HybridPredictor:
+    """混合预测器：Young-Lippmann + 二阶欠阻尼响应"""
 ```
 
 ### 构造函数
 ```python
-def __init__(self, input_dim, hidden_dims, output_dim, 
-             activation='relu', config=None):
+def __init__(
+    self,
+    model_path: str = None,
+    config_path: str = None,
+    use_model_for_steady_state: bool = False,
+    device: str = 'cpu'
+):
 ```
-
-**参数说明**:
-- `input_dim` (int): 输入维度
-- `hidden_dims` (list): 隐藏层维度列表，如 `[128, 64, 32]`
-- `output_dim` (int): 输出维度
-- `activation` (str, 默认'relu'): 激活函数类型
-- `config` (dict, 可选): 配置字典
 
 ### 主要方法
 
-#### forward
+#### predict
 ```python
-def forward(self, x):
-    """前向传播"""
+def predict(
+    self, 
+    voltage: float, 
+    time: float, 
+    V_initial: float = 0.0,
+    t_step: float = 0.0
+) -> float:
+    """预测接触角"""
 ```
 
-**参数**:
-- `x` (torch.Tensor): 输入张量
+#### young_lippmann
+```python
+def young_lippmann(self, V: float) -> float:
+    """Young-Lippmann 方程计算平衡接触角"""
+```
 
-**返回值**:
-- `torch.Tensor`: 预测结果
+#### step_response
+```python
+def step_response(
+    self,
+    V_start: float = 0.0,
+    V_end: float = 30.0,
+    duration: float = 0.02,
+    t_step: float = 0.002,
+    num_points: int = 500
+) -> Tuple[np.ndarray, np.ndarray]:
+    """计算阶跃响应"""
+```
 
-## EfficientResidualLayer 类
+### 使用示例
+```python
+from src.predictors import HybridPredictor
 
-**文件**: `ewp_pinn_optimized_architecture.py`
+predictor = HybridPredictor(config_path='config/stage6_wall_effect.json')
+
+# 单点预测
+theta = predictor.predict(voltage=20, time=0.01)
+
+# 阶跃响应
+t, theta = predictor.step_response(V_start=0, V_end=20)
+```
+
+---
+
+## PINNAperturePredictor 类
+
+**文件**: `src/predictors/pinn_aperture.py`
+
+基于 PINN 的开口率预测器。
 
 ### 类定义
 ```python
-class EfficientResidualLayer(nn.Module):
-    """高效残差层 - 支持批量归一化和激活函数"""
+class PINNAperturePredictor:
+    """PINN 开口率预测器"""
 ```
 
 ### 构造函数
 ```python
-def __init__(self, input_dim, output_dim, activation='ReLU', 
-             batch_norm=True, dropout_rate=0.1):
+def __init__(
+    self, 
+    checkpoint_path: Optional[str] = None, 
+    device: Optional[str] = None
+):
 ```
 
-## AttentionMechanism 类
+### 主要方法
 
-**文件**: `ewp_pinn_optimized_architecture.py`
-
-### 类定义
+#### predict
 ```python
-class AttentionMechanism(nn.Module):
-    """通道注意力机制 - 增强特征表示"""
+def predict(
+    self, 
+    voltage: float, 
+    time: float, 
+    n_points: int = 100
+) -> float:
+    """预测开口率"""
 ```
 
-### 构造函数
+#### predict_phi_field
 ```python
-def __init__(self, channels, reduction=16):
+def predict_phi_field(
+    self, 
+    voltage: float, 
+    time: float, 
+    n_points: int = 100,
+    z: float = 0.0
+) -> np.ndarray:
+    """预测 φ 场"""
 ```
 
-## 使用示例
-
-### 基础用法
+### 使用示例
 ```python
-import torch
-from ewp_pinn_optimized_architecture import EfficientEWPINN
+from src.predictors.pinn_aperture import PINNAperturePredictor
 
-# 创建模型实例
-model = EfficientEWPINN(
-    input_dim=62,
-    output_dim=24,
-    hidden_layers=[256, 128, 64],
-    activation='GELU',
-    use_residual=True,
-    use_attention=True,
-    device='cuda'
-)
-
-# 前向传播
-input_data = torch.randn(32, 62).cuda()
-output = model(input_data)
-print(f"输出形状: {output.shape}")  # torch.Size([32, 24])
+predictor = PINNAperturePredictor()
+eta = predictor.predict(voltage=20, time=0.02)
+phi_field = predictor.predict_phi_field(voltage=20, time=0.02)
 ```
 
-### 高级配置
+---
+
+## 物理常量（已校准）
+
 ```python
-# 使用配置文件
-model = EfficientEWPINN(
-    config_path='model_config.json',
-    device='cuda',
-    compression_factor=0.8,
-    gradient_checkpointing=True
-)
-
-# 保存和加载模型
-model.save_model('best_model.pth')
-model.load_model('best_model.pth')
+PHYSICS = {
+    # 几何参数
+    "Lx": 174e-6,           # 像素宽度 (m)
+    "Ly": 174e-6,           # 像素高度 (m)
+    "Lz": 20e-6,            # 围堰高度 (m)
+    "h_ink": 3e-6,          # 油墨层厚度 (m)
+    
+    # 电润湿参数（已校准）
+    "theta0": 120.0,        # 初始接触角 (度)
+    "gamma": 0.050,         # 极性液体表面张力 (N/m)
+    "epsilon_r": 3.0,       # SU-8 相对介电常数
+    "epsilon_h": 1.9,       # Teflon 相对介电常数
+    "d_dielectric": 4e-7,   # SU-8 厚度 (m) = 400nm
+    "d_hydrophobic": 4e-7,  # Teflon 厚度 (m) = 400nm
+    "V_threshold": 3.0,     # 阈值电压 (V)
+    
+    # 动力学参数
+    "tau": 0.005,           # 响应时间常数 (s)
+    "zeta": 0.8,            # 阻尼比
+    "t_max": 0.02,          # 最大时间 (s)
+}
 ```
 
-### 优化版本使用
+## 开口率映射参数（已校准）
+
 ```python
-from efd_pinns_train import OptimizedEWPINN
-
-# 创建简化模型
-model = OptimizedEWPINN(
-    input_dim=62,
-    hidden_dims=[128, 64, 32],
-    output_dim=24,
-    activation='relu'
-)
+APERTURE_MAPPING = {
+    "k": 0.8,               # 陡度参数
+    "theta_scale": 6.0,     # 角度缩放因子
+    "alpha": 0.05,          # 电容反馈强度
+    "aperture_max": 0.85,   # 最大开口率
+}
 ```
-
-## 性能优化建议
-
-1. **内存优化**: 启用 `gradient_checkpointing=True` 和 `compression_factor=0.8`
-2. **训练加速**: 使用混合精度训练和CUDA设备
-3. **模型选择**: 复杂问题用EfficientEWPINN，简单问题用OptimizedEWPINN
-4. **架构调整**: 根据问题复杂度调整隐藏层配置
-
-## 注意事项
-
-- 确保输入维度与模型配置一致
-- 使用合适的激活函数避免梯度消失
-- 残差连接有助于深层网络训练
-- 注意力机制可提升特征表示能力

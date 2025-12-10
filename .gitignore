@@ -1,6 +1,7 @@
 # Python cache and build artifacts
 __pycache__/
 *.py[cod]
+*.pyo
 *.pyd
 *.so
 *.egg-info/
@@ -15,7 +16,12 @@ venv/
 *.swo
 .DS_Store
 
+# Testing cache
+.pytest_cache/
+.hypothesis/
+
 # Project outputs and large artifacts (training results)
+outputs/
 outputs_*/
 output/
 results*/
