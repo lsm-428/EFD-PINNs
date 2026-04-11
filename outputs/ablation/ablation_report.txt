@@ -1,0 +1,32 @@
+EFD3D 消融实验对比报告
+更新时间: 2026-03-31
+=======================================
+
+实验: no_continuity
+  输出目录: /home/scnu/Gitee/EFD3D/outputs/ablation/no_continuity_20260319_120818
+  最终损失 (L-BFGS): 34.230
+  说明: 移除连续性约束 (weight=0)
+
+实验: no_vof
+  输出目录: /home/scnu/Gitee/EFD3D/outputs/ablation/no_vof_20260320_040325
+  最终损失 (L-BFGS): 26.158
+  说明: 移除VOF输运方程 (weight=0)
+
+实验: no_interface
+  输出目录: /home/scnu/Gitee/EFD3D/outputs/ablation/no_interface_20260320_202045
+  最终损失 (L-BFGS): 37.048
+  说明: 移除界面边界条件 (weight=0)
+
+实验: single_stage
+  输出目录: /home/scnu/Gitee/EFD3D/outputs/ablation/single_stage_20260321_124607
+  最终损失 (L-BFGS): 44.597
+  说明: 无课程学习, 所有物理约束从epoch 0激活
+
+实验: smaller_network
+  输出目录: /home/scnu/Gitee/EFD3D/outputs/ablation/smaller_network_20260322_043943
+  最终损失 (L-BFGS): 55.360
+  说明: 缩减网络容量 (phi=[64,64,32], vel=[32,32])
+
+=======================================
+排序 (低→高): no_vof (26.16) < no_continuity (34.23) < no_interface (37.05) < single_stage (44.60) < smaller_network (55.36)
+=======================================

@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "stage": "2_two_phase_pinn",
+    "version": "ablation-no-interface",
+    "created_at": "2026-03-19",
+    "description": "ABLATION STUDY: Remove interface loss (\u03c6 boundary condition). Tests the importance of interface constraint.",
+    "ablation_type": "no_interface",
+    "base_config": "v4.5-standard",
+    "hypothesis": "Without interface loss, the \u03c6 field will not match the expected interface shape, leading to incorrect aperture."
+  },
+  "model": {
+    "input_format": "triplet",
+    "hidden_phi": [
+      128,
+      128,
+      64,
+      32
+    ],
+    "hidden_vel": [
+      64,
+      64,
+      32
+    ]
+  },
+  "stage1_eta_tutor": true,
+  "training": {
+    "epochs": 60000,
+    "batch_size": 4096,
+    "learning_rate": 0.0003,
+    "min_lr": 1e-06,
+    "gradient_clip": 1.0,
+    "stage1_epochs": 1500,
+    "stage2_epochs": 4000,
+    "stage3_epochs": 50000,
+    "early_stop_patience": 60000,
+    "warmup_epochs": 500,
+    "volume_n_vol": 20000,
+    "volume_base_weight": 2000.0,
+    "stage1_tutor_min_factor": 0.2,
+    "stage1_tutor_anneal_span": 5000,
+    "continuity_transition_weight": 2000.0,
+    "use_lbfgs": true,
+    "lbfgs_iter": 3000
+  },
+  "eval": {
+    "aperture_phi0": 0.3,
+    "aperture_eps": 0.05
+  },
+  "physics": {
+    "interface_weight": 0.0,
+    "ic_weight": 300.0,
+    "bc_weight": 80.0,
+    "continuity_weight": 0.5,
+    "vof_weight": 0.5,
+    "ns_weight": 0.1,
+    "surface_tension_weight": 0.01,
+    "sharpening_weight": 1.0,
+    "explicit_volume_weight": 100.0
+  },
+  "data": {
+    "n_interface": 60000,
+    "n_initial": 10000,
+    "n_boundary": 8000,
+    "n_domain": 50000,
+    "voltages": [
+      0.0,
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0,
+      9.0,
+      10.0,
+      11.0,
+      12.0,
+      13.0,
+      14.0,
+      15.0,
+      16.0,
+      17.0,
+      18.0,
+      19.0,
+      20.0,
+      21.0,
+      22.0,
+      23.0,
+      24.0,
+      25.0,
+      26.0,
+      27.0,
+      28.0,
+      29.0,
+      30.0
+    ],
+    "times": 200
+  },
+  "dynamic_weight": {
+    "enable": true,
+    "initial_weight": 0.1,
+    "min_weight": 0.01,
+    "max_weight": 5.0,
+    "adjustment_strategy": "combined",
+    "smoothing_factor": 0.9,
+    "adjustment_interval": 100,
+    "target_loss_ratio": 1.0,
+    "patience": 500
+  }
+}

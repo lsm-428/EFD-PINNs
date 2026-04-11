@@ -1,0 +1,177 @@
+# ============================================================================
+# Python Standard & Build Artifacts
+# ============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ============================================================================
+# Virtual Environments
+# ============================================================================
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================================================
+# Testing & Quality Assurance
+# ============================================================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+
+# ============================================================================
+# IDE & Editors
+# ============================================================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains / IntelliJ
+.idea/
+*.iml
+
+# Trae
+.trae/
+
+# OpenCode
+.opencode/
+
+# Mac OS
+.DS_Store
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+
+# ============================================================================
+# Jupyter Notebooks
+# ============================================================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# ============================================================================
+# Project Outputs (Training, Logs, Results)
+# ============================================================================
+# outputs/  <- Temporarily commented out to allow upload
+# outputs_*/  <- Commented out to allow outputs directory
+output/
+results*/
+train_results/
+checkpoints/
+checkpoints_*/
+performance_reports/
+logs/
+*.log
+
+# ============================================================================
+# Custom Ignores (User-defined)
+# ============================================================================
+CLAUDE.md
+papers/
+
+# ============================================================================
+# Data & Large Binary Files
+# ============================================================================
+# Models
+*.pth
+*.pt
+*.ckpt
+
+# Data
+*.npz
+*.npy
+*.pkl
+*.h5
+*.hd5
+*.hdf5
+data/levelset/
+levelset/data/*
+!levelset/data/.gitkeep
+
+# Generated Figures & Documents
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.svg
+!assets/*.png  # Allow keeping assets for README if they exist
+!docs/*.png    # Allow documentation images
+
+# Temporary & Backup
+*.tmp
+*.temp
+*.bak
+*.backup
+*.pid
+
+# ============================================================================
+# EFD3D Project Specific
+# ============================================================================
+# Experimental code (not for production)
+# experimental/  <- Uncommented to allow pushing
+
+# Paper drafts and figures
+papers/
+paper/
+
+# Experiments module auto-generated files
+experiments/experiments/
+experiments/comparison_figures/
+experiments/reports/
+experiments/configs/exp_*.json
+experiments/configs/config_*.json
+experiments/configs/train_config_*.json
+experiments/configs/version_history.json
+
+# LevelSet specific
+# levelset/outputs_*/  <- Commented out to allow levelset outputs
+levelset/nohup.out
+
+# Local Execution Scripts (not for repo)
+run_stage2_optimized.sh
+run_stage2_training.sh
+check_optimization_ready.sh
+
+# Agent / Tool Temporary Files
+.sisyphus/
+.claude/
+
+# Package Managers
+uv.lock
+.uv/

@@ -1,0 +1,65 @@
+# ============================================================================
+# Experimental Directory Git Ignore Rules
+# ============================================================================
+
+# Model files (large binary files)
+*.pth
+*.pt
+*.ckpt
+
+# Output directories
+outputs*/
+output/
+results*/
+
+# Log files
+*.log
+logs/
+
+# Data files
+*.npz
+*.npy
+*.pkl
+*.h5
+*.hd5
+*.hdf5
+data/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# Generated figures and documents
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.svg
+
+# Package managers
+uv.lock
+.uv/
+
+# Local scripts
+*.sh
+*.bat

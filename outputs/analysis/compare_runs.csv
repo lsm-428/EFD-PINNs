@@ -1,0 +1,6 @@
+ID,Epochs,Final Loss,Version
+pinn_20260319_120821,59900,34.23,no_continuity
+pinn_20260320_040329,59900,26.16,no_vof
+pinn_20260320_202048,59900,37.05,no_interface
+pinn_20260321_124610,59900,44.60,single_stage
+pinn_20260322_043947,59900,55.36,smaller_network

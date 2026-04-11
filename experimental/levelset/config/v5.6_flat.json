@@ -1,0 +1,117 @@
+{
+  "_comment": "Scientific approach v5.5 - 扁平化配置版本",
+  "model": {
+    "input_dim": 6,
+    "output_dim": 10,
+    "epsilon": 0.05,
+    "surface_tension": 0.045,
+    "psi_scale": 2e-6,
+    "hidden_main": [64, 64, 32],
+    "hidden_interface": [64, 64, 32],
+    "hidden_corner": [64, 64, 64],
+    "use_checkpoint": false
+  },
+  "epochs": 50000,
+  "batch_size": 4096,
+  "learning_rate": 0.00005,
+  "log_interval": 100,
+  "save_interval": 5000,
+  "num_interior": 256,
+  "num_boundary": 64,
+  "num_interface": 256,
+  "use_amp": false,
+  "gradient_accumulation_steps": 1,
+  "gradient_clip": 1.0,
+  "lr_scheduler": {
+    "type": "StepLR",
+    "step_size": 20000,
+    "gamma": 0.5
+  },
+  "training_stages": [
+    {
+      "end_epoch": 5000,
+      "focus": "data_fitting",
+      "description": "Stage 1: 数据拟合 + 基础约束（建立ψ分布）",
+      "loss_weights": {
+        "data": 1000.0,
+        "boundary_wall": 1.0,
+        "contact_angle": 10.0,
+        "continuity_1": 5.0,
+        "continuity_2": 5.0,
+        "volume_conservation": 100.0,
+        "psi_spatial": 10.0,
+        "aperture_monotonicity": 5.0,
+        "initial_condition": 1.0,
+        "sign_constraint": 1.0,
+        "levelset_transport": 0.0,
+        "ns_1": 0.0,
+        "ns_2": 0.0,
+        "electrostatic": 0.01
+      }
+    },
+    {
+      "end_epoch": 15000,
+      "focus": "transport_introduce",
+      "description": "Stage 2: 引入 Level Set Transport + 完整约束",
+      "loss_weights": {
+        "data": 500.0,
+        "boundary_wall": 1.0,
+        "contact_angle": 10.0,
+        "continuity_1": 5.0,
+        "continuity_2": 5.0,
+        "volume_conservation": 100.0,
+        "psi_spatial": 10.0,
+        "aperture_monotonicity": 5.0,
+        "initial_condition": 1.0,
+        "sign_constraint": 1.0,
+        "levelset_transport": 1e-4,
+        "ns_1": 0.0,
+        "ns_2": 0.0,
+        "electrostatic": 0.01
+      }
+    },
+    {
+      "end_epoch": 30000,
+      "focus": "transport_balance",
+      "description": "Stage 3: 逐步增加 transport 权重（1e-8 → 1e-5）",
+      "loss_weights": {
+        "data": 300.0,
+        "boundary_wall": 1.0,
+        "contact_angle": 5.0,
+        "continuity_1": 3.0,
+        "continuity_2": 3.0,
+        "volume_conservation": 50.0,
+        "psi_spatial": 5.0,
+        "aperture_monotonicity": 3.0,
+        "initial_condition": 0.5,
+        "sign_constraint": 0.5,
+        "levelset_transport": 1e-3,
+        "ns_1": 0.0,
+        "ns_2": 0.0,
+        "electrostatic": 0.1
+      }
+    },
+    {
+      "end_epoch": 50000,
+      "focus": "physics_balance",
+      "description": "Stage 4: 平衡数据和物理（transport权重 1e-2）",
+      "loss_weights": {
+        "data": 200.0,
+        "boundary_wall": 0.5,
+        "contact_angle": 5.0,
+        "continuity_1": 2.0,
+        "continuity_2": 2.0,
+        "volume_conservation": 50.0,
+        "psi_spatial": 3.0,
+        "aperture_monotonicity": 2.0,
+        "initial_condition": 0.1,
+        "sign_constraint": 0.1,
+        "levelset_transport": 1e-2,
+        "ns_1": 0.0,
+        "ns_2": 0.0,
+        "electrostatic": 1.0
+      }
+    }
+  ],
+  "training_data_path": "data/levelset_training_data_v5.5_large.pt"
+}

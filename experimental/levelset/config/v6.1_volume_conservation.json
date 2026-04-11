@@ -1,0 +1,146 @@
+{
+  "_comment": "v6.1 - 专门优化体积守恒",
+  "_changes": [
+    "✅ 添加全局体积守恒损失函数",
+    "✅ 体积守恒权重提升至 100.0",
+    "✅ 在所有训练阶段保持高体积守恒权重",
+    "✅ 修复 3D 体积计算方法"
+  ],
+  "model": {
+    "input_dim": 6,
+    "output_dim": 10,
+    "epsilon": 0.01,
+    "surface_tension": 0.045,
+    "psi_scale": 2e-6,
+    "hidden_main": [64, 64, 32],
+    "hidden_interface": [64, 64, 32],
+    "hidden_corner": [64, 64, 64],
+    "use_checkpoint": false
+  },
+  "training": {
+    "epochs": 50000,
+    "batch_size": 4096,
+    "learning_rate": 0.00005,
+    "log_interval": 100,
+    "save_interval": 10000,
+    "num_interior": 256,
+    "num_boundary": 64,
+    "num_interface": 256,
+    "use_amp": false,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip": 1.0,
+    "lr_scheduler": {
+      "type": "CosineAnnealingWarmRestarts",
+      "T_0": 10000,
+      "T_mult": 2,
+      "eta_min": 1e-6
+    },
+    "training_stages": [
+      {
+        "end_epoch": 5000,
+        "focus": "data_fitting",
+        "description": "Stage 1: 数据拟合 + 体积守恒",
+        "loss_weights": {
+          "data": 1000.0,
+          "contact_angle": 20.0,
+          "continuity_1": 5.0,
+          "continuity_2": 5.0,
+          "volume_conservation": 100.0,
+          "psi_spatial": 10.0,
+          "aperture_monotonicity": 5.0,
+          "levelset_transport": 0.0,
+          "electrostatic": 0.0,
+          "ns_1": 0.0,
+          "ns_2": 0.0,
+          "slip_wall": 1.0,
+          "velocity_reg": 10.0
+        }
+      },
+      {
+        "end_epoch": 15000,
+        "focus": "transport_introduce",
+        "description": "Stage 2: 引入 Level Set Transport + 体积守恒",
+        "loss_weights": {
+          "data": 500.0,
+          "contact_angle": 20.0,
+          "continuity_1": 5.0,
+          "continuity_2": 5.0,
+          "volume_conservation": 100.0,
+          "psi_spatial": 10.0,
+          "aperture_monotonicity": 5.0,
+          "levelset_transport": 1e-8,
+          "electrostatic": 0.0,
+          "ns_1": 0.0,
+          "ns_2": 0.0,
+          "slip_wall": 1.0,
+          "velocity_reg": 10.0
+        }
+      },
+      {
+        "end_epoch": 30000,
+        "focus": "transport_grow",
+        "description": "Stage 3: 增加 transport 权重 + 体积守恒",
+        "loss_weights": {
+          "data": 300.0,
+          "contact_angle": 20.0,
+          "continuity_1": 3.0,
+          "continuity_2": 3.0,
+          "volume_conservation": 100.0,
+          "psi_spatial": 5.0,
+          "aperture_monotonicity": 3.0,
+          "levelset_transport": 1e-5,
+          "electrostatic": 0.1,
+          "ns_1": 0.0,
+          "ns_2": 0.0,
+          "slip_wall": 1.0,
+          "velocity_reg": 5.0
+        }
+      },
+      {
+        "end_epoch": 50000,
+        "focus": "physics_balance",
+        "description": "Stage 4: 物理约束主导 + 体积守恒",
+        "loss_weights": {
+          "data": 100.0,
+          "contact_angle": 20.0,
+          "continuity_1": 2.0,
+          "continuity_2": 2.0,
+          "volume_conservation": 100.0,
+          "psi_spatial": 3.0,
+          "aperture_monotonicity": 2.0,
+          "levelset_transport": 1e-3,
+          "electrostatic": 1.0,
+          "ns_1": 1.0,
+          "ns_2": 1.0,
+          "slip_wall": 0.5,
+          "velocity_reg": 2.0
+        }
+      }
+    ]
+  },
+  "loss_weights": {
+    "data": 1000.0,
+    "contact_angle": 20.0,
+    "continuity_1": 5.0,
+    "continuity_2": 5.0,
+    "volume_conservation": 100.0,
+    "psi_spatial": 10.0,
+    "aperture_monotonicity": 5.0,
+    "levelset_transport": 0.0,
+    "electrostatic": 0.0,
+    "ns_1": 0.0,
+    "ns_2": 0.0,
+    "slip_wall": 1.0,
+    "velocity_reg": 10.0
+  },
+  "training_data_path": "data/levelset_training_data_v6.1_large.pt",
+  "data": {
+    "voltages": "continuous 0-30V",
+    "t_max": 0.05,
+    "time_points": "continuous Beta distribution",
+    "num_interface": 250000,
+    "num_ink": 250000,
+    "num_polar": 250000,
+    "total_samples": 750000
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "_comment": "Isolation test: ONLY volume conservation loss enabled - testing the torch.no_grad() fix",
+  "_purpose": "Verify that removing torch.no_grad() allows VolCon to learn. Expected: Volume Error < 5%",
+  "model": {
+    "input_dim": 6,
+    "output_dim": 10,
+    "epsilon": 0.01,
+    "surface_tension": 0.045,
+    "psi_scale": 2e-6,
+    "hidden_main": [64, 64, 32],
+    "hidden_interface": [64, 64, 32],
+    "hidden_corner": [64, 64, 64],
+    "use_checkpoint": false
+  },
+  "training": {
+    "epochs": 20000,
+    "batch_size": 4096,
+    "learning_rate": 0.0001,
+    "log_interval": 100,
+    "save_interval": 5000,
+    "num_interior": 256,
+    "num_boundary": 64,
+    "num_interface": 256,
+    "use_amp": false,
+    "gradient_accumulation_steps": 1,
+    "gradient_clip": 1.0,
+    "lr_scheduler": {
+      "type": "StepLR",
+      "step_size": 10000,
+      "gamma": 0.5
+    },
+    "training_stages": [
+      {
+        "end_epoch": 20000,
+        "focus": "volcon_only",
+        "description": "ISOLATION TEST: Only Volume Conservation Loss",
+        "loss_weights": {
+          "data": 0.0,
+          "contact_angle": 0.0,
+          "continuity_1": 0.0,
+          "continuity_2": 0.0,
+          "volume_conservation": 50.0,
+          "psi_spatial": 0.0,
+          "aperture_monotonicity": 0.0,
+          "levelset_transport": 0.0,
+          "electrostatic": 0.0,
+          "ns_1": 0.0,
+          "ns_2": 0.0,
+          "sign_constraint": 0.0,
+          "slip_wall": 0.0,
+          "velocity_reg": 0.0,
+          "boundary_wall": 0.0,
+          "boundary_symmetry": 0.0,
+          "initial_condition": 0.0
+        }
+      }
+    ]
+  },
+  "loss_weights": {
+    "data": 0.0,
+    "contact_angle": 0.0,
+    "continuity_1": 0.0,
+    "continuity_2": 0.0,
+    "volume_conservation": 50.0,
+    "psi_spatial": 0.0,
+    "aperture_monotonicity": 0.0,
+    "levelset_transport": 0.0,
+    "electrostatic": 0.0,
+    "ns_1": 0.0,
+    "ns_2": 0.0,
+    "sign_constraint": 0.0,
+    "boundary_wall": 0.0,
+    "boundary_symmetry": 0.0,
+    "initial_condition": 0.0
+  },
+  "training_data_path": "data/levelset_training_data_v5.5_large.pt",
+  "data": {
+    "note": "Data is loaded but NOT used for loss (weight=0.0)"
+  }
+}
