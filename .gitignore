@@ -175,3 +175,6 @@ check_optimization_ready.sh
 # Package Managers
 uv.lock
 .uv/
+
+# Git Worktrees
+.worktrees/
