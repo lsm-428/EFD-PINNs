@@ -1,0 +1,61 @@
+Graphical Abstract Description for Displays
+
+Title: EFD3D: A Physics-Informed Neural Network for Electrowetting Display Pixel Simulation
+
+Layout (portrait, single panel, 531x1328 px):
+
+SECTION 1 - Title:
+  "EFD3D" (large, bold)
+  Subtitle: "PINN for Electrowetting Display Simulation"
+
+SECTION 2 - EWD Pixel + 6D Triad Input (side by side):
+  LEFT: EWD pixel cross-section showing oil layer (yellow) and polar fluid (blue) with interface
+  RIGHT: 6D Triad input boxes [x, y, z, V_from, V_to, t_since]
+  Connection: arrow from pixel to input representation
+
+SECTION 3 - Dual-Branch PINN Architecture:
+  phi-network (blue): layers [6, 128, 128, 64, 32, 1] with Tanh + Sigmoid
+  Velocity-network (green): layers [7, 64, 64, 32, 4] with Tanh
+  Connection: phi output feeds into velocity network
+
+SECTION 4 - Physics Constraints (4 boxes):
+  Continuity (green): div(u) = 0
+  Momentum (red): Navier-Stokes
+  Interface (orange): VOF Transport
+  Mass (blue): Volume Conservation
+
+SECTION 5 - Three-Stage Curriculum Learning (progress bars):
+  Stage 1: 1.5K epochs - Geometry
+  Stage 2: 2.5K epochs - Kinematics
+  Stage 3: 56K epochs - Full Physics
+  + L-BFGS fine-tuning (3,000 iterations)
+
+SECTION 6 - Ablation Study (bar chart):
+  6 variants: Full (34.6), no VOF (26.2), no Continuity (34.2),
+  no Interface (37.0), 1-Stage (44.6), Small Network (55.4)
+  Key message: "Lowest loss (no VOF: 26.2) is NOT best physics"
+
+SECTION 7 - Inverse Design Capability (two boxes with arrow):
+  Left: "Target: eta_target(t)" + "Gradient descent on V(t)"
+  Right: "Optimal: V*(t)" + "Min energy, meet constraints"
+
+SECTION 8 - Edge Deployment on 5GB VRAM (4 boxes):
+  4K batch | Adam+L-BFGS | Explicit physics | Dual-network
+
+SECTION 9 - Key Results (5 metric boxes):
+  35K Parameters | <1% Volume Error | ~3s Inference | 83.4% Aperture @30V | 11ms Response Time
+
+SECTION 10 - Development Process:
+  "8 months | 120+ experiments | Multiple iterations"
+
+FOOTER - Dark bar with 5 metrics:
+  35K Params | <1% Vol Err | ~3s Inference | 5GB VRAM | Open Source
+
+Color scheme:
+  Blue (#1565C0): polar fluid, phi-network, volume conservation
+  Green (#2E7D32): velocity-network, continuity, success metrics
+  Red (#C62828): voltage parameters, Navier-Stokes, ablation warning
+  Orange (#E65100): VOF transport, edge deployment
+  Purple (#6A1B9A): t_since, inverse design
+  Yellow (#F9A825): oil layer
+  Dark (#212121): title, footer bar

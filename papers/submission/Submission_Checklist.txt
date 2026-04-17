@@ -1,0 +1,61 @@
+# Submission Checklist for Displays
+
+## ✅ Document Files
+- [x] Main manuscript (EFD3D_PINN_Paper_v2.0_final.pdf) - 6.06 MB ✓
+- [x] Cover letter (Cover_Letter.txt) - Updated with correct title ✓
+- [x] Highlights (Highlights.txt) - 8 key points ✓
+- [x] Graphical abstract (Graphical_Abstract.png) - 388 KB ✓
+- [x] Graphical abstract description (Graphical_Abstract_Description.txt) - Updated ✓
+- [x] Supplementary materials (Supplementary_Materials.md) - Updated ✓
+- [x] Graphical abstract high-res (Graphical_Abstract_531x1328.tiff) - 2.82 MB ✓
+
+## ✅ Title Consistency
+- [x] All documents use the simplified title: "EFD3D: A Physics-Informed Neural Network for Electrowetting Display Pixel Simulation" ✓
+- [x] No references to "Framework" or "Three-Dimensional" in title ✓
+
+## ✅ Content Completeness
+- [x] Abstract: Complete with key contributions ✓
+- [x] Introduction: Background, motivation, contributions ✓
+- [x] Methodology: Detailed technical approach ✓
+- [x] Results: Comprehensive experimental validation ✓
+- [x] Discussion: Analysis and implications ✓
+- [x] Conclusion: Summary and future work ✓
+- [x] References: 27 properly formatted references ✓
+- [x] Author statements: CRediT, data availability, competing interests ✓
+
+## ✅ Technical Quality
+- [x] Format: LaTeX compiled without errors ✓
+- [x] Figures: 10 figures with proper labels and captions ✓
+- [x] Tables: Device parameters and training configuration ✓
+- [x] Equations: Properly formatted mathematical expressions ✓
+- [x] Units: Consistent formatting throughout ✓
+- [x] Citations: Proper in-text citations and reference list ✓
+
+## ✅ Academic Standards
+- [x] Originality: Novel PINN framework for EWD simulation ✓
+- [x] Significance: Addresses industrial simulation challenges ✓
+- [x] Reproducibility: Open-source code and detailed methodology ✓
+- [x] Ethics: Proper declarations and acknowledgments ✓
+
+## ✅ Journal Requirements (Displays)
+- [x] Scope fit: Advances EWD simulation capabilities ✓
+- [x] Word count: Appropriate length for full article ✓
+- [x] Figure quality: High-resolution images provided ✓
+- [x] Supplementary materials: Implementation details included ✓
+
+## ✅ Reviewer Suggestions
+- [x] Three potential reviewers with relevant expertise provided ✓
+- [x] Complete contact information for all suggested reviewers ✓
+
+## ✅ Final Verification
+- [x] All files updated with current date ✓
+- [x] No placeholder text or incomplete sections ✓
+- [x] Consistent terminology and notation throughout ✓
+- [x] Proper file naming conventions ✓
+
+**Total files: 8 documents + 10 media files**
+**Total size: ~15.7 MB**
+
+✅ READY FOR SUBMISSION
+
+Last updated: 2026-04-11 22:52

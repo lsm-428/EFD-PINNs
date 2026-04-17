@@ -101,8 +101,8 @@ logs/
 # ============================================================================
 # Custom Ignores (User-defined)
 # ============================================================================
-CLAUDE.md
-papers/
+# CLAUDE.md       # ← 保留：项目工作指南，用于AI协作
+# papers/       # ← 保留：论文投稿版本
 
 # ============================================================================
 # Data & Large Binary Files
@@ -147,8 +147,7 @@ levelset/data/*
 # experimental/  <- Uncommented to allow pushing
 
 # Paper drafts and figures
-papers/
-paper/
+# paper/     # ← 保留：草稿
 
 # Experiments module auto-generated files
 experiments/experiments/
