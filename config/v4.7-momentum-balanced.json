@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "stage": "2_two_phase_pinn",
+    "version": "v4.7-momentum-balanced",
+    "created_at": "2026-04-20",
+    "description": "EFD3D v4.7 with balanced momentum weights - Optimized momentum equation learning (45x weight increase) to maintain visibility while avoiding training instability observed in v4.6.",
+    "based_on": {
+      "training_run": "pinn_20260420_085640",
+      "reference_config": "v4.6-momentum-optimized with stability improvements",
+      "analysis": "v4.6 momentum weights (125x) caused late-stage instability, v4.7 uses 45x for balanced learning"
+    }
+  },
+  "model": {
+    "input_format": "triplet",
+    "hidden_phi": [128, 128, 64, 32],
+    "hidden_vel": [64, 64, 32]
+  },
+  "stage1_eta_tutor": true,
+  "stage1_eta_from_model": true,
+  "training": {
+    "epochs": 60000,
+    "batch_size": 4096,
+    "learning_rate": 0.0003,
+    "min_lr": 1e-06,
+    "gradient_clip": 1.0,
+    "stage1_epochs": 1500,
+    "stage2_epochs": 4000,
+    "stage3_epochs": 60000,
+    "early_stop_patience": 60000,
+    "warmup_epochs": 500,
+    "volume_n_vol": 20000,
+    "volume_base_weight": 2000.0,
+    "stage1_tutor_min_factor": 0.20,
+    "stage1_tutor_anneal_span": 5000,
+    "continuity_transition_weight": 2000.0,
+    "use_lbfgs": true,
+    "lbfgs_iter": 3000
+  },
+  "eval": {
+    "aperture_phi0": 0.3,
+    "aperture_eps": 0.05
+  },
+  "physics": {
+    "interface_weight": 500.0,
+    "ic_weight": 300.0,
+    "bc_weight": 80.0,
+    "continuity_weight": 0.5,
+    "vof_weight": 0.5,
+    "ns_weight": 0.3,
+    "surface_tension_weight": 0.1,
+    "sharpening_weight": 1.0,
+    "explicit_volume_weight": 100.0,
+    "residual_weights": {
+      "young_lippmann": 2.0,
+      "contact_angle_constraint": 2.0,
+      "sidewall_contact_angle": 2.0,
+      "wall_wetting": 1.0,
+      "interface_stability": 0.5,
+      "volume_conservation": 0.3,
+      "interface_curvature": 0.3,
+      "surface_tension": 1.0,
+      "contact_line_dynamics": 0.2,
+      "vof": 0.5,
+      "temporal_smoothness": 0.1,
+      "continuity": 0.1,
+      "momentum_u": 0.3,
+      "momentum_v": 0.3,
+      "momentum_w": 0.3,
+      "two_phase_continuity": 0.05,
+      "two_phase_momentum_u": 0.01,
+      "two_phase_momentum_v": 0.01,
+      "two_phase_momentum_w": 0.01,
+      "dielectric_charge": 0.2,
+      "frequency_response": 0.15,
+      "thermodynamic": 0.1,
+      "optical_properties": 0.15,
+      "energy_efficiency": 0.15,
+      "volume_consistency": 0.05,
+      "ink_potential_min": 0.0,
+      "ink_energy_balance": 0.05,
+      "data_fit": 1.0
+    }
+  },
+  "data": {
+    "n_interface": 60000,
+    "n_initial": 10000,
+    "n_boundary": 8000,
+    "n_domain": 50000,
+    "voltages": [
+      0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0,
+      10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0,
+      20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0
+    ],
+    "times": 200
+  },
+  "dynamic_weight": {
+    "enable": true,
+    "initial_weight": 0.1,
+    "min_weight": 0.01,
+    "max_weight": 5.0,
+    "adjustment_strategy": "combined",
+    "smoothing_factor": 0.9,
+    "adjustment_interval": 100,
+    "target_loss_ratio": 1.0,
+    "patience": 500
+  }
+}
