@@ -15,6 +15,7 @@ dependencies = [
     "pyyaml>=6.0",
     "tqdm>=4.67.0",
     "pyvista>=0.46.5",
+    "deepxde>=1.15.0",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +26,6 @@ full = [
     "plotly>=6.3.0",
 ]
 web = [
-    "fastapi>=0.115.0",
     "pydantic>=2.9.0",
     "uvicorn>=0.32.0",
     "streamlit>=1.49.0",
@@ -61,6 +61,12 @@ dev = [
     "black>=24.0.0",
     "hypothesis>=6.151.4",
     "pyvista>=0.46.5",
+]
+monitoring = [
+    "tensorboard>=2.20.0",
+]
+testing = [
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.ruff]

@@ -35,6 +35,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
 
 from src.physics.constraints import PhysicsConstraints, PINNConstraintLayer
 
@@ -1432,6 +1433,9 @@ class Trainer:
         logger.addHandler(file_handler)
         logger.info(f"日志文件: {log_file}")
             
+        # 初始化 TensorBoard writer
+        self.tb_writer = SummaryWriter(log_dir=os.path.join(self.output_dir, "runs"))
+
         # 预先保存一份配置
         with open(os.path.join(self.output_dir, "config.json"), "w") as f:
             json.dump(self.config, f, indent=2, default=str)
@@ -2350,7 +2354,21 @@ class Trainer:
         logger.info("=" * 60)
         logger.info("开始两相流 PINN 训练")
         logger.info("=" * 60)
-        
+
+        # 记录网络结构图到 TensorBoard
+        try:
+            sample_input = next(iter(data.values()))
+            if isinstance(sample_input, torch.Tensor):
+                self.tb_writer.add_graph(self.model, sample_input)
+            else:
+                # 尝试找到合适的输入张量
+                for key, value in data.items():
+                    if isinstance(value, torch.Tensor) and value.dim() > 1:
+                        self.tb_writer.add_graph(self.model, value[:1])  # 使用第一个样本
+                        break
+        except Exception as e:
+            logger.warning(f"无法添加网络图到 TensorBoard: {e}")
+
         data = self.data_generator.generate_all_data()
         start_time = time.time()
         
@@ -2384,12 +2402,35 @@ class Trainer:
             
             # 记录历史 (使用更健壮的获取方式)
             def get_val(d, k): return d.get(k, torch.tensor(0.0)).item()
-            
+
+            # TensorBoard 日志记录
+            if epoch % 100 == 0:  # 每 100 轮记录一次到 TensorBoard
+                self.tb_writer.add_scalar('Loss/total', total_loss.item(), epoch)
+                self.tb_writer.add_scalar('Loss/interface', get_val(losses, "interface"), epoch)
+                self.tb_writer.add_scalar('Loss/physics', get_val(losses, "pinn_physics"), epoch)
+                self.tb_writer.add_scalar('Learning_Rate', self.optimizer.param_groups[0]["lr"], epoch)
+
+                # 详细的物理损失
+                self.tb_writer.add_scalar('Loss/pinn_continuity', get_val(losses, "pinn_continuity"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_vof', get_val(losses, "pinn_vof"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_momentum_u', get_val(losses, "pinn_momentum_u"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_momentum_v', get_val(losses, "pinn_momentum_v"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_momentum_w', get_val(losses, "pinn_momentum_w"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_surface_tension', get_val(losses, "pinn_surface_tension"), epoch)
+                self.tb_writer.add_scalar('Loss/pinn_temporal_smoothness', get_val(losses, "pinn_temporal_smoothness"), epoch)
+
+            # 记录梯度直方图 (每 1000 轮)
+            if epoch % 1000 == 0 and epoch > 0:
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None:
+                        self.tb_writer.add_histogram(f'gradients/{name}', param.grad, epoch)
+                        self.tb_writer.add_histogram(f'weights/{name}', param.data, epoch)
+
             # [2025-12-31] 物理损失统一从 pinn_physics 获取
             # 旧的 continuity, vof, ns, surface_tension 已不再单独计算
             physics_loss = get_val(losses, "pinn_physics")
             interface_loss = get_val(losses, "interface")
-            
+
             self.history["epoch"].append(epoch)
             self.history["loss"].append(total_loss.item())
             self.history["interface"].append(interface_loss)
@@ -2511,6 +2552,10 @@ class Trainer:
         except Exception as e:
             logger.error(f"生成专业评估仪表盘失败: {e}")
         
+        # 关闭 TensorBoard writer
+        self.tb_writer.close()
+        logger.info(f"TensorBoard 日志已保存到: {os.path.join(self.output_dir, 'runs')}")
+
         logger.info("=" * 60)
         logger.info(f"训练完成! 最佳损失: {self.best_loss:.6e}")
         logger.info(f"输出目录: {self.output_dir}")

@@ -25,6 +25,9 @@ uv run scripts/dashboard.py
 
 # Run ablation study
 uv run scripts/run_ablation.sh
+
+# Launch TensorBoard for training monitoring
+tensorboard --logdir outputs/train/pinn_YYYYMMDD_HHMMSS/runs/
 ```
 
 ### Testing
@@ -46,7 +49,7 @@ uv run pytest tests/ --cov=src --cov-report=html
 
 ## 🏗️ Project Architecture
 
-EFD3D is an industrial-grade Physics-Informed Neural Network (PINN) framework for 3D two-phase flow simulation in electrowetting applications.
+EFD3D is a Physics-Informed Neural Network (PINN) framework for 3D two-phase flow simulation in electrowetting applications.
 
 ### Core Architecture
 - **Two-Stage Design**: Stage 1 (analytical contact angle model) + Stage 2 (PINN for full flow field)
@@ -71,6 +74,8 @@ EFD3D/
 │   │   ├── __init__.py           # PHYSICS parameters export
 │   │   └── physics_config.py     # Type-safe configuration
 │   └── utils/                    # Utilities
+│       ├── model_utils.py        # Model loading and prediction extraction
+│       └── logging_config.py     # Unified logging configuration
 │
 ├── config/                       # Training configurations
 │   ├── v4.5-standard.json        # Recommended config (proven convergence)
@@ -94,6 +99,7 @@ EFD3D/
 - **Configuration**: `src/config/__init__.py` (PHYSICS parameters), `src/config/physics_config.py`
 - **Training Control**: `src/training/scheduler.py`, `src/training/stabilizer.py`
 - **Predictors**: `src/predictors/hybrid_predictor.py`, `src/predictors/pinn_aperture.py`
+- **Utilities**: `src/utils/model_utils.py` (model loading), `src/utils/logging_config.py` (logging setup)
 
 ---
 
@@ -163,7 +169,7 @@ tests/
 ### Training Pipeline
 1. **Configuration**: Select/config training parameters in `config/`
 2. **Training**: Run `train_two_phase.py` with chosen config
-3. **Monitoring**: Use dashboard for real-time visualization
+3. **Monitoring**: Use dashboard for visualization or TensorBoard for detailed metrics
 4. **Evaluation**: Run `evaluate.py` for detailed analysis
 5. **Testing**: Verify with `test_pinn_complete.py`
 
@@ -225,6 +231,13 @@ For detailed information, consult:
 - **Formatting**: `black` (line length 88)
 - **Testing**: `pytest` + `hypothesis`
 
+### Utility Functions
+- **Model Loading**: `src/utils/model_utils.py` - Handle checkpoint loading with architecture mismatch
+- **Logging**: `src/utils/logging_config.py` - Unified logging setup with environment variable support
+
+### Monitoring & Visualization
+- **TensorBoard Integration**: `src/models/pinn_two_phase.py` - Complete training monitoring with loss curves, gradients, and network architecture visualization
+
 ### Output Structure
 Training outputs are organized as:
 ```
@@ -239,4 +252,4 @@ outputs/train/pinn_YYYYMMDD_HHMMSS/
 
 ---
 
-*Last updated: 2026-04-13 | Version: v4.5*
+*Last updated: 2026-04-18 | Version: v4.5.0*

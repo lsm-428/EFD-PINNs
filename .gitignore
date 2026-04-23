@@ -102,7 +102,14 @@ logs/
 # Custom Ignores (User-defined)
 # ============================================================================
 # CLAUDE.md       # ← 保留：项目工作指南，用于AI协作
-# papers/       # ← 保留：论文投稿版本
+papers/                           # 论文投稿材料不上传
+papers/*                            # 确保papers目录下所有内容都不上传
+*.pdf                               # 所有PDF文件不上传
+*.docx                              # 所有Word文件不上传
+*.doc                               # 所有Word文件不上传
+*.png                               # 所有图片文件不上传
+!assets/*.png                       # 但保留assets目录下的png
+!docs/*.png                         # 但保留docs目录下的png
 
 # ============================================================================
 # Data & Large Binary Files
