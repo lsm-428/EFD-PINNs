@@ -1,8 +1,0 @@
-Highlights for Displays
-
-• First PINN framework for 3D electrowetting display pixel simulation.
-• 6D Triad input enables arbitrary voltage step transitions without retraining.
-• Physical parameters derived from actual EWD device specifications.
-• Volume conservation error below 1% with only 35K trainable parameters.
-• Extensive ablation studies validate physics constraint contributions.
-• Inverse design capability supports gradient-based voltage waveform optimization.
